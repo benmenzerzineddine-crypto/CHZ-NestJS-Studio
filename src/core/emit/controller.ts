@@ -1,0 +1,314 @@
+import type { CustomEndpointIR, EntityIR, ProjectIR } from "../ir/types";
+import type { AccessRule } from "../model/schema";
+import { ImportRegistry } from "../ir/imports";
+import { sourceImport } from "./helpers";
+import {
+  AUTH_CURRENT_USER_PATH,
+  AUTH_PUBLIC_PATH,
+  AUTH_ROLES_PATH,
+  AUTH_USER_PATH,
+  CURRENT_TENANT_PATH,
+  entityControllerPath,
+  entityDtoPath,
+  entityFilePath,
+  entityServicePath,
+  file,
+  renderCacheControl,
+} from "./helpers";
+import type { GeneratedFile } from "../ir/types";
+
+function accessDecoratorsForRule(rule: AccessRule, ir: ProjectIR): string[] {
+  if (!ir.auth.enabled) return [];
+  const lines: string[] = [];
+  if (rule.level === "public") {
+    lines.push("@Public()");
+    return lines;
+  }
+
+  lines.push("@ApiBearerAuth()");
+  if (rule.level === "roles") {
+    const roles = (rule.roles ?? []).map((role) => JSON.stringify(role)).join(", ");
+    lines.push(`@Roles(${roles})`);
+  }
+  if (rule.level === "owner") {
+    lines.push("// Admin bypass and owner scoping are enforced by the service query.");
+  }
+  return lines;
+}
+
+function accessDecorators(
+  entity: EntityIR,
+  ir: ProjectIR,
+  operation: "list" | "read" | "create" | "update" | "delete",
+): string[] {
+  return accessDecoratorsForRule(entity.access[operation], ir);
+}
+
+function usesPublic(entity: EntityIR, ir: ProjectIR): boolean {
+  if (!ir.auth.enabled) return false;
+  return (
+    Object.values(entity.access).some((rule) => rule.level === "public") ||
+    entity.customEndpoints.some((ep) => ep.access.level === "public")
+  );
+}
+
+function usesRoles(entity: EntityIR, ir: ProjectIR): boolean {
+  if (!ir.auth.enabled) return false;
+  return (
+    Object.values(entity.access).some((rule) => rule.level === "roles") ||
+    entity.customEndpoints.some((ep) => ep.access.level === "roles")
+  );
+}
+
+function protectedOperation(
+  entity: EntityIR,
+  ir: ProjectIR,
+  operation: "list" | "read" | "create" | "update" | "delete",
+): boolean {
+  return ir.auth.enabled && entity.access[operation].level !== "public";
+}
+
+function responseDecorators(
+  entity: EntityIR,
+  ir: ProjectIR,
+  operation: "list" | "read" | "create" | "update" | "delete" | "restore",
+): string[] {
+  const lines: string[] = [];
+  const sourceOperation = operation === "restore" ? "delete" : operation;
+
+  if (operation === "list") {
+    lines.push(`@ApiOperation({ summary: "List ${entity.name} records" })`);
+    const type = entity.options.pagination ? `Paginated${entity.name}Dto` : `[${entity.name}Entity]`;
+    lines.push(`@ApiOkResponse({ description: "Paginated ${entity.name} list", type: ${type} })`);
+    lines.push('@ApiBadRequestResponse({ description: "Invalid query parameters" })');
+  } else if (operation === "read") {
+    lines.push(`@ApiOperation({ summary: "Get one ${entity.name}" })`);
+    lines.push(`@ApiOkResponse({ description: "${entity.name} found", type: ${entity.name}Entity })`);
+  } else if (operation === "create") {
+    lines.push(`@ApiOperation({ summary: "Create a ${entity.name}" })`);
+    lines.push(`@ApiCreatedResponse({ description: "${entity.name} created", type: ${entity.name}Entity })`);
+    lines.push('@ApiBadRequestResponse({ description: "Validation failed" })');
+  } else if (operation === "update") {
+    lines.push(`@ApiOperation({ summary: "Update a ${entity.name}" })`);
+    lines.push(`@ApiOkResponse({ description: "${entity.name} updated", type: ${entity.name}Entity })`);
+    lines.push('@ApiBadRequestResponse({ description: "Validation failed" })');
+  } else if (operation === "restore") {
+    lines.push(`@ApiOperation({ summary: "Restore a soft-deleted ${entity.name}" })`);
+    lines.push(`@ApiNoContentResponse({ description: "${entity.name} restored" })`);
+  } else {
+    lines.push(`@ApiOperation({ summary: "Delete a ${entity.name}" })`);
+    lines.push(`@ApiNoContentResponse({ description: "${entity.name} deleted" })`);
+  }
+
+  if (protectedOperation(entity, ir, sourceOperation)) {
+    lines.push('@ApiUnauthorizedResponse({ description: "Missing or invalid access token" })');
+    if (entity.access[sourceOperation].level !== "authenticated") {
+      lines.push('@ApiForbiddenResponse({ description: "Insufficient permissions" })');
+    }
+  }
+
+  if (operation !== "list" && operation !== "create") {
+    lines.push('@ApiNotFoundResponse({ description: "Record not found" })');
+  }
+
+  return lines;
+}
+
+function customEndpointResponseDecorators(ep: CustomEndpointIR, ir: ProjectIR): string[] {
+  const lines: string[] = [];
+  lines.push(`@ApiOperation({ summary: ${JSON.stringify(ep.description || `Custom endpoint ${ep.name}`)} })`);
+  lines.push('@ApiOkResponse({ description: "Success" })');
+
+  if (ir.auth.enabled && ep.access.level !== "public") {
+    lines.push('@ApiUnauthorizedResponse({ description: "Missing or invalid access token" })');
+    if (ep.access.level !== "authenticated") {
+      lines.push('@ApiForbiddenResponse({ description: "Insufficient permissions" })');
+    }
+  }
+
+  if (ep.hasIdParam) {
+    lines.push('@ApiNotFoundResponse({ description: "Record not found" })');
+  }
+
+  return lines;
+}
+
+export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
+  const path = entityControllerPath(entity);
+  const registry = new ImportRegistry();
+  registry.add(
+    "@nestjs/common",
+    "Controller",
+    "Get",
+    "Post",
+    "Patch",
+    "Delete",
+    "Body",
+    "Param",
+    "Query",
+    "HttpCode",
+    entity.primary.type === "int" ? "ParseIntPipe" : "ParseUUIDPipe",
+  );
+  if (entity.customEndpoints.some((ep) => ep.method === "PUT")) {
+    registry.add("@nestjs/common", "Put");
+  }
+  registry.add(
+    "@nestjs/swagger",
+    "ApiBadRequestResponse",
+    "ApiBearerAuth",
+    "ApiCreatedResponse",
+    "ApiForbiddenResponse",
+    "ApiNoContentResponse",
+    "ApiNotFoundResponse",
+    "ApiOkResponse",
+    "ApiOperation",
+    "ApiTags",
+    "ApiUnauthorizedResponse",
+  );
+  registry.add(sourceImport(path, entityServicePath(entity)), `${entity.name}Service`);
+  registry.add(sourceImport(path, entityDtoPath(entity, "create")), `Create${entity.name}Dto`);
+  registry.add(sourceImport(path, entityDtoPath(entity, "update")), `Update${entity.name}Dto`);
+  registry.add(sourceImport(path, entityDtoPath(entity, "query")), `Query${entity.name}Dto`);
+  registry.add(sourceImport(path, entityFilePath(entity)), `${entity.name} as ${entity.name}Entity`);
+  if (entity.options.pagination) {
+    registry.add(
+      sourceImport(path, `${entity.moduleDir}/dto/paginated-${entity.dtoPrefix}.dto.ts`),
+      `Paginated${entity.name}Dto`,
+    );
+  }
+  if (entity.multitenant) {
+    registry.add(sourceImport(path, CURRENT_TENANT_PATH), "CurrentTenant");
+    if (ir.project.settings.swagger) {
+      registry.add("@nestjs/swagger", "ApiHeader");
+    }
+  }
+  registry.add(sourceImport(path, AUTH_CURRENT_USER_PATH), "CurrentUser");
+  registry.add(sourceImport(path, AUTH_USER_PATH), "AuthUser");
+  if (usesPublic(entity, ir)) registry.add(sourceImport(path, AUTH_PUBLIC_PATH), "Public");
+  if (usesRoles(entity, ir)) registry.add(sourceImport(path, AUTH_ROLES_PATH), "Roles");
+
+  const idPipe = entity.primary.type === "int" ? "ParseIntPipe" : "ParseUUIDPipe";
+  const idType = entity.primary.tsType;
+  const lines: string[] = [];
+  lines.push(`@ApiTags('${entity.restPath}')`);
+  if (entity.multitenant && ir.project.settings.swagger) {
+    lines.push(`@ApiHeader({ name: '${ir.multitenancy.header}', description: 'Tenant identifier', required: true })`);
+  }
+  if (entity.throttle) {
+    registry.add("@nestjs/throttler", "Throttle");
+    lines.push(`@Throttle({ default: { limit: ${entity.throttle.limit}, ttl: ${entity.throttle.ttl * 1000} } })`);
+  }
+  lines.push(`@Controller('${entity.restPath}')`);
+  lines.push(`export class ${entity.name}Controller {`);
+  lines.push(`  constructor(private readonly service: ${entity.name}Service) {}`);
+  lines.push("");
+
+  const tenantParam = entity.multitenant ? "@CurrentTenant() tenantId: string, " : "";
+  const tenantArg = entity.multitenant ? "tenantId, " : "";
+
+  lines.push(...responseDecorators(entity, ir, "list").map((line) => `  ${line}`));
+  lines.push(...accessDecorators(entity, ir, "list").map((line) => `  ${line}`));
+  if (entity.cache) {
+    registry.add("@nestjs/common", "Header");
+    lines.push(`  @Header('Cache-Control', '${renderCacheControl(entity.cache)}')`);
+  }
+  lines.push("  @Get()");
+  lines.push(`  findAll(@Query() query: Query${entity.name}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`);
+  lines.push(`    return this.service.findAll(query, ${tenantArg}user);`);
+  lines.push("  }");
+  lines.push("");
+
+  lines.push(...responseDecorators(entity, ir, "read").map((line) => `  ${line}`));
+  lines.push(...accessDecorators(entity, ir, "read").map((line) => `  ${line}`));
+  if (entity.cache) {
+    registry.add("@nestjs/common", "Header");
+    lines.push(`  @Header('Cache-Control', '${renderCacheControl(entity.cache)}')`);
+  }
+  lines.push("  @Get(':id')");
+  lines.push(`  findOne(@Param('id', ${idPipe}) id: ${idType}, ${tenantParam}@CurrentUser() user?: AuthUser) {`);
+  lines.push(`    return this.service.findOne(id, ${tenantArg}user);`);
+  lines.push("  }");
+  lines.push("");
+
+  lines.push(...responseDecorators(entity, ir, "create").map((line) => `  ${line}`));
+  lines.push(...accessDecorators(entity, ir, "create").map((line) => `  ${line}`));
+  lines.push("  @Post()");
+  lines.push(`  create(@Body() dto: Create${entity.name}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`);
+  lines.push(`    return this.service.create(dto, ${tenantArg}user);`);
+  lines.push("  }");
+  lines.push("");
+
+  lines.push(...responseDecorators(entity, ir, "update").map((line) => `  ${line}`));
+  lines.push(...accessDecorators(entity, ir, "update").map((line) => `  ${line}`));
+  lines.push("  @Patch(':id')");
+  lines.push(
+    `  update(@Param('id', ${idPipe}) id: ${idType}, @Body() dto: Update${entity.name}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
+  );
+  lines.push(`    return this.service.update(id, dto, ${tenantArg}user);`);
+  lines.push("  }");
+  lines.push("");
+
+  lines.push(...responseDecorators(entity, ir, "delete").map((line) => `  ${line}`));
+  lines.push(...accessDecorators(entity, ir, "delete").map((line) => `  ${line}`));
+  lines.push("  @Delete(':id')");
+  lines.push("  @HttpCode(204)");
+  lines.push(
+    `  async remove(@Param('id', ${idPipe}) id: ${idType}, ${tenantParam}@CurrentUser() user?: AuthUser): Promise<void> {`,
+  );
+  lines.push(`    await this.service.remove(id, ${tenantArg}user);`);
+  lines.push("  }");
+
+  if (entity.softDelete) {
+    lines.push("");
+    lines.push(...responseDecorators(entity, ir, "restore").map((line) => `  ${line}`));
+    lines.push(...accessDecorators(entity, ir, "delete").map((line) => `  ${line}`));
+    lines.push("  @Post(':id/restore')");
+    lines.push("  @HttpCode(204)");
+    lines.push(
+      `  async restore(@Param('id', ${idPipe}) id: ${idType}, ${tenantParam}@CurrentUser() user?: AuthUser): Promise<void> {`,
+    );
+    lines.push(`    await this.service.restore(id, ${tenantArg}user);`);
+    lines.push("  }");
+  }
+
+  for (const ep of entity.customEndpoints) {
+    lines.push("");
+    lines.push(...customEndpointResponseDecorators(ep, ir).map((line) => `  ${line}`));
+    lines.push(...accessDecoratorsForRule(ep.access, ir).map((line) => `  ${line}`));
+    if (ep.skipThrottle) {
+      registry.add("@nestjs/throttler", "SkipThrottle");
+      lines.push("  @SkipThrottle()");
+    } else if (ep.throttle) {
+      registry.add("@nestjs/throttler", "Throttle");
+      lines.push(`  @Throttle({ default: { limit: ${ep.throttle.limit}, ttl: ${ep.throttle.ttl * 1000} } })`);
+    }
+    if (ep.cache && ep.method === "GET") {
+      registry.add("@nestjs/common", "Header");
+      lines.push(`  @Header('Cache-Control', '${renderCacheControl(ep.cache)}')`);
+    }
+    const methodDecorator = ep.method.charAt(0) + ep.method.slice(1).toLowerCase();
+    const routeArg = ep.routePath ? `'${ep.routePath}'` : "";
+    lines.push(`  @${methodDecorator}(${routeArg})`);
+    if (ep.hasIdParam) {
+      lines.push(
+        `  ${ep.name}(@Param('id', ${idPipe}) id: ${idType}, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
+      );
+      lines.push(`    return this.service.${ep.name}(id, ${tenantArg}user);`);
+      lines.push("  }");
+    } else {
+      lines.push(`  ${ep.name}(${tenantParam}@CurrentUser() user?: AuthUser) {`);
+      lines.push(`    return this.service.${ep.name}(${tenantArg}user);`);
+      lines.push("  }");
+    }
+  }
+
+  lines.push("}");
+  const content = `${registry.render()}${lines.join("\n")}\n`;
+  return file(path, content);
+}
+
+export function emitControllers(ir: ProjectIR): GeneratedFile[] {
+  return ir.entities
+    .filter((entity) => !entity.isSystem)
+    .map((entity) => emitController(ir, entity));
+}

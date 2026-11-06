@@ -1,0 +1,69 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@theme {
+  --color-canvas: #0b0d12;
+  --color-surface: #101319;
+  --color-surface-raised: #161a23;
+  --color-surface-hover: #1c2130;
+  --color-border: #252b39;
+  --color-border-strong: #343c50;
+  --color-foreground: #e7eaf2;
+  --color-muted: #8d95aa;
+  --color-accent: #7c6cff;
+  --color-accent-strong: #6a58f5;
+  --color-accent-foreground: #ffffff;
+  --color-danger: #f05757;
+  --color-success: #3ecf8e;
+  --color-warning: #e5b454;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-canvas);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  button {
+    font: inherit;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border: 3px solid var(--color-surface);
+    border-radius: 999px;
+  }
+}

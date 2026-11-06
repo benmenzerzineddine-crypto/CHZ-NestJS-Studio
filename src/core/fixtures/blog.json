@@ -1,0 +1,278 @@
+{
+  "id": "prj_blogdemo",
+  "schemaVersion": 1,
+  "name": "Blog API",
+  "packageName": "blog-api",
+  "driver": "postgres",
+  "auth": {
+    "enabled": true,
+    "registerEnabled": true,
+    "refreshTokens": true,
+    "accessTokenTtl": "15m",
+    "refreshTokenTtl": "7d",
+    "passwordMinLength": 10,
+    "seedAdmin": true,
+    "adminUserEndpoints": true,
+    "roles": [
+      { "key": "admin", "label": "Administrator" },
+      { "key": "user", "label": "User" },
+      { "key": "editor", "label": "Editor" }
+    ]
+  },
+  "enums": [
+    {
+      "id": "enm_poststatus",
+      "name": "PostStatus",
+      "values": ["draft", "published", "archived"]
+    }
+  ],
+  "entities": [
+    {
+      "id": "ent_user",
+      "name": "User",
+      "description": "Built-in account entity. Extra fields are allowed; authentication fields are generated.",
+      "fields": [
+        {
+          "id": "fld_useremail",
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "indexed": true,
+          "primary": false,
+          "column": { "length": 255 }
+        }
+      ],
+      "relations": [],
+      "options": {
+        "timestamps": true,
+        "softDelete": false,
+        "pagination": true,
+        "searchFields": ["email"],
+        "sortFields": [],
+        "owner": false
+      },
+      "access": {
+        "list": { "level": "roles", "roles": ["admin"] },
+        "read": { "level": "authenticated" },
+        "create": { "level": "roles", "roles": ["admin"] },
+        "update": { "level": "owner" },
+        "delete": { "level": "roles", "roles": ["admin"] }
+      }
+    },
+    {
+      "id": "ent_post",
+      "name": "Post",
+      "description": "A published article written by a user.",
+      "fields": [
+        {
+          "id": "fld_posttitle",
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "unique": false,
+          "indexed": false,
+          "primary": false,
+          "column": { "length": 160 },
+          "validators": { "minLength": 3, "maxLength": 160 }
+        },
+        {
+          "id": "fld_postslug",
+          "name": "slug",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "indexed": true,
+          "primary": false,
+          "column": { "length": 180 },
+          "validators": { "maxLength": 180 }
+        },
+        {
+          "id": "fld_postcontent",
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "indexed": false,
+          "primary": false,
+          "validators": { "minLength": 1 }
+        },
+        {
+          "id": "fld_poststatus",
+          "name": "status",
+          "type": "enum",
+          "required": true,
+          "unique": false,
+          "indexed": true,
+          "primary": false,
+          "enumId": "enm_poststatus"
+        },
+        {
+          "id": "fld_postpublishedat",
+          "name": "publishedAt",
+          "type": "datetime",
+          "required": false,
+          "unique": false,
+          "indexed": false,
+          "primary": false
+        },
+        {
+          "id": "fld_postviews",
+          "name": "views",
+          "type": "int",
+          "required": true,
+          "unique": false,
+          "indexed": false,
+          "primary": false,
+          "defaultValue": "0",
+          "validators": { "min": 0 }
+        }
+      ],
+      "relations": [
+        {
+          "id": "rel_postauthor",
+          "name": "author",
+          "targetEntityId": "ent_user",
+          "kind": "many-to-one",
+          "nullable": false,
+          "cascade": false
+        },
+        {
+          "id": "rel_postowner",
+          "name": "owner",
+          "targetEntityId": "ent_user",
+          "kind": "many-to-one",
+          "nullable": true,
+          "cascade": false
+        },
+        {
+          "id": "rel_posttags",
+          "name": "tags",
+          "targetEntityId": "ent_tag",
+          "kind": "many-to-many",
+          "nullable": false,
+          "cascade": false
+        }
+      ],
+      "options": {
+        "timestamps": true,
+        "softDelete": true,
+        "pagination": true,
+        "searchFields": ["title", "content"],
+        "sortFields": ["title", "publishedAt"],
+        "owner": true,
+        "ownerRelation": "owner"
+      },
+      "access": {
+        "list": { "level": "public" },
+        "read": { "level": "public" },
+        "create": { "level": "authenticated" },
+        "update": { "level": "owner" },
+        "delete": { "level": "roles", "roles": ["admin"] }
+      }
+    },
+    {
+      "id": "ent_tag",
+      "name": "Tag",
+      "description": "A label attached to posts.",
+      "fields": [
+        {
+          "id": "fld_tagname",
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "indexed": true,
+          "primary": false,
+          "column": { "length": 80 }
+        }
+      ],
+      "relations": [],
+      "options": {
+        "timestamps": true,
+        "softDelete": false,
+        "pagination": true,
+        "searchFields": ["name"],
+        "sortFields": ["name"],
+        "owner": false
+      },
+      "access": {
+        "list": { "level": "public" },
+        "read": { "level": "public" },
+        "create": { "level": "roles", "roles": ["admin", "editor"] },
+        "update": { "level": "roles", "roles": ["admin", "editor"] },
+        "delete": { "level": "roles", "roles": ["admin"] }
+      }
+    },
+    {
+      "id": "ent_comment",
+      "name": "Comment",
+      "description": "A reader response on a post.",
+      "fields": [
+        {
+          "id": "fld_commentbody",
+          "name": "body",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "indexed": false,
+          "primary": false,
+          "validators": { "minLength": 1 }
+        },
+        {
+          "id": "fld_commentapproved",
+          "name": "isApproved",
+          "type": "boolean",
+          "required": true,
+          "unique": false,
+          "indexed": false,
+          "primary": false,
+          "defaultValue": "false"
+        }
+      ],
+      "relations": [
+        {
+          "id": "rel_commentpost",
+          "name": "post",
+          "targetEntityId": "ent_post",
+          "kind": "many-to-one",
+          "nullable": false,
+          "cascade": true
+        },
+        {
+          "id": "rel_commentowner",
+          "name": "owner",
+          "targetEntityId": "ent_user",
+          "kind": "many-to-one",
+          "nullable": true,
+          "cascade": false
+        }
+      ],
+      "options": {
+        "timestamps": true,
+        "softDelete": false,
+        "pagination": true,
+        "searchFields": ["body"],
+        "sortFields": [],
+        "owner": true,
+        "ownerRelation": "owner"
+      },
+      "access": {
+        "list": { "level": "authenticated" },
+        "read": { "level": "authenticated" },
+        "create": { "level": "authenticated" },
+        "update": { "level": "owner" },
+        "delete": { "level": "roles", "roles": ["admin"] }
+      }
+    }
+  ],
+  "settings": {
+    "packageManager": "npm",
+    "apiPrefix": "api",
+    "swagger": true,
+    "docker": true,
+    "tests": true
+  },
+  "createdAt": "2026-10-23T12:00:00.000Z",
+  "updatedAt": "2026-10-23T12:00:00.000Z"
+}
