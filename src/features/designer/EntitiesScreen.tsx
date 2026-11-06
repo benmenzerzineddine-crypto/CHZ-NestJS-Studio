@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabList, Tab } from "@/components/ui/tabs";
 import { isSystemEntity } from "@/core/model/defaults";
 import { cn } from "@/lib/cn";
 import { useProjectStore } from "@/store/project.store";
@@ -82,33 +83,39 @@ export function EntitiesScreen() {
   return (
     <div className="flex h-full min-h-0">
       <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-surface/40">
-        <div className="flex gap-1 border-b border-border p-2">
-          <button
-            type="button"
-            onClick={() => setDesignerTab("entities")}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-              tab === "entities"
-                ? "bg-accent/10 text-foreground"
-                : "text-muted hover:bg-surface-raised hover:text-foreground",
-            )}
+        <div className="border-b border-border p-2">
+          <Tabs
+            selectedKey={tab}
+            onSelectionChange={(key) => setDesignerTab(key as "entities" | "enums")}
+            aria-label="Designer view selector"
           >
-            <Boxes className="h-3.5 w-3.5" />
-            Entities
-          </button>
-          <button
-            type="button"
-            onClick={() => setDesignerTab("enums")}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-              tab === "enums"
-                ? "bg-accent/10 text-foreground"
-                : "text-muted hover:bg-surface-raised hover:text-foreground",
-            )}
-          >
-            <Braces className="h-3.5 w-3.5" />
-            Enums
-          </button>
+            <TabList className="grid w-full grid-cols-2 gap-1 rounded-lg bg-surface-raised/60 p-1 text-xs">
+              <Tab
+                id="entities"
+                className={cn(
+                  "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors outline-none",
+                  tab === "entities"
+                    ? "bg-accent/15 text-foreground font-semibold shadow-xs"
+                    : "text-muted hover:text-foreground",
+                )}
+              >
+                <Boxes className="h-3.5 w-3.5" />
+                Entities
+              </Tab>
+              <Tab
+                id="enums"
+                className={cn(
+                  "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors outline-none",
+                  tab === "enums"
+                    ? "bg-accent/15 text-foreground font-semibold shadow-xs"
+                    : "text-muted hover:text-foreground",
+                )}
+              >
+                <Braces className="h-3.5 w-3.5" />
+                Enums
+              </Tab>
+            </TabList>
+          </Tabs>
         </div>
 
         <div className="space-y-2 border-b border-border p-3">

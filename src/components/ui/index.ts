@@ -12,6 +12,7 @@ export * from "./method-badge";
 export * from "./number-input";
 export * from "./select";
 export * from "./switch";
+export * from "./tabs";
 export * from "./textarea";
 export * from "./toaster";
 export * from "./tooltip";
