@@ -79,6 +79,22 @@ function apiProperty(field: FieldIR, optional: boolean): string {
         break;
     }
   }
+
+  const validators = field.definition.validators;
+  if (validators) {
+    if (validators.min !== undefined) parts.push(`minimum: ${validators.min}`);
+    if (validators.max !== undefined) parts.push(`maximum: ${validators.max}`);
+    if (validators.minLength !== undefined) parts.push(`minLength: ${validators.minLength}`);
+    if (validators.maxLength !== undefined) parts.push(`maxLength: ${validators.maxLength}`);
+    if (validators.pattern !== undefined) parts.push(`pattern: ${JSON.stringify(validators.pattern)}`);
+  } else if (field.definition.column?.length !== undefined && (field.type === "string" || field.type === "text")) {
+    parts.push(`maxLength: ${field.definition.column.length}`);
+  }
+
+  if (field.defaultValue !== undefined) {
+    parts.push(`default: ${JSON.stringify(field.defaultValue)}`);
+  }
+
   parts.push(`example: ${exampleFor(field)}`);
   const body = `{ ${parts.join(", ")} }`;
   return optional ? `@ApiPropertyOptional(${body})` : `@ApiProperty(${body})`;

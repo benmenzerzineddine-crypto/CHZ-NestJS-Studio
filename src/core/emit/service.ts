@@ -22,19 +22,28 @@ import {
   ownerCreateLine,
   emitBroadcastEvent,
   buildCustomEndpointStubs,
+  buildDerivedOneToManyMethods,
 } from "./service-query";
 
 export function emitService(ir: ProjectIR, entity: EntityIR): GeneratedFile {
   const path = entityServicePath(entity);
   const registry = new ImportRegistry();
+  const oneToManyDerived = entity.derivedRelations.filter(
+    (derived) => derived.kind === "one-to-many" && !derived.source.isSystem,
+  );
+  const hasManyToMany = entity.relations.some((relation) => relation.kind === "many-to-many");
+  const hasOneToMany = oneToManyDerived.length > 0;
+  const needsIn =
+    hasManyToMany ||
+    oneToManyDerived.some((d) => d.source.relations.some((r) => r.kind === "many-to-many"));
+
   registry.add("@nestjs/common", "BadRequestException", "Injectable", "NotFoundException");
   registry.add("@nestjs/typeorm", "InjectRepository");
-  registry.add(
-    "typeorm",
-    ...(entity.relations.some((relation) => relation.kind === "many-to-many")
-      ? ["DataSource", "In", "Repository"]
-      : ["Repository"]),
-  );
+  const typeormImports = ["Repository"];
+  if (hasManyToMany || hasOneToMany) typeormImports.push("DataSource");
+  if (needsIn) typeormImports.push("In");
+  registry.add("typeorm", ...typeormImports);
+
   registry.add(sourceImport(path, entityFilePath(entity)), entity.name);
   registry.add(sourceImport(path, entityDtoPath(entity, "create")), `Create${entity.name}Dto`);
   registry.add(sourceImport(path, entityDtoPath(entity, "update")), `Update${entity.name}Dto`);
@@ -59,6 +68,28 @@ export function emitService(ir: ProjectIR, entity: EntityIR): GeneratedFile {
     }
   }
 
+  for (const derived of oneToManyDerived) {
+    const child = derived.source;
+    registry.add(sourceImport(path, entityFilePath(child)), child.name);
+    registry.add(sourceImport(path, entityDtoPath(child, "create")), `Create${child.name}Dto`);
+    registry.add(sourceImport(path, entityDtoPath(child, "query")), `Query${child.name}Dto`);
+    if (child.multitenant && !entity.multitenant) {
+      registry.add(sourceImport(path, ACCESS_PATH), "applyTenantScope");
+    }
+    if (child.softDelete && ir.auth.enabled) {
+      registry.add("@nestjs/common", "ForbiddenException");
+      registry.add(sourceImport(path, ACCESS_PATH), "isAdmin");
+    }
+    if (ir.auth.enabled && accessUsesOwner(child, "list")) {
+      registry.add(sourceImport(path, ACCESS_PATH), "applyAccessScope");
+    }
+    for (const relation of child.relations) {
+      if (relation.kind === "many-to-many") {
+        registry.add(sourceImport(path, entityFilePath(relation.target)), relation.target.name);
+      }
+    }
+  }
+
   if (entity.softDelete && ir.auth.enabled) registry.add("@nestjs/common", "ForbiddenException");
 
   const broadcastCrud = ir.websockets?.enabled && ir.websockets?.broadcastCrud;
@@ -75,7 +106,7 @@ export function emitService(ir: ProjectIR, entity: EntityIR): GeneratedFile {
   lines.push(`export class ${entity.name}Service {`);
   lines.push("  constructor(");
   lines.push(`    @InjectRepository(${entity.name}) private readonly repository: Repository<${entity.name}>,`);
-  if (entity.relations.some((relation) => relation.kind === "many-to-many")) {
+  if (hasManyToMany || hasOneToMany) {
     lines.push("    private readonly dataSource: DataSource,");
   }
   if (broadcastCrud) {
@@ -145,6 +176,11 @@ export function emitService(ir: ProjectIR, entity: EntityIR): GeneratedFile {
     lines.push(`    if (!entity) throw new NotFoundException("${entity.name} not found");`);
     lines.push(`    await this.repository.restore(id);`);
     lines.push("  }");
+  }
+
+  for (const derived of oneToManyDerived) {
+    lines.push("");
+    lines.push(...buildDerivedOneToManyMethods(entity, derived, ir));
   }
 
   lines.push(...buildCustomEndpointStubs(entity));

@@ -1,4 +1,6 @@
-import type { EntityIR, FieldIR, ProjectIR } from "../ir/types";
+import type { DerivedRelationIR, EntityIR, FieldIR, ProjectIR } from "../ir/types";
+import pluralize from "pluralize";
+import { toPascalCase } from "../model/naming";
 
 export function queryFilterFields(entity: EntityIR): FieldIR[] {
   const reserved = new Set(["page", "limit", "search", "sort", "order"]);
@@ -277,5 +279,102 @@ export function buildCustomEndpointStubs(entity: EntityIR): string[] {
     lines.push(`    return { message: "${ep.name} stub" };`);
     lines.push("  }");
   }
+  return lines;
+}
+
+export function buildDerivedOneToManyMethods(
+  entity: EntityIR,
+  derived: DerivedRelationIR,
+  ir: ProjectIR,
+): string[] {
+  const lines: string[] = [];
+  const child = derived.source;
+  const childFk = derived.sourceRelation.fkName ?? `${derived.sourceRelation.name}Id`;
+  const alias = child.name.toLowerCase();
+  const idTypeStr = idType(entity);
+  const tenantParam = entity.multitenant ? "tenantId: string, " : "";
+  const tenantArg = entity.multitenant ? "tenantId, " : "";
+  const findMethodName = `find${toPascalCase(derived.name)}`;
+  const singleName = pluralize.singular(derived.name);
+  const createMethodName = `create${toPascalCase(singleName) || child.name}`;
+  const paginated = child.options.pagination;
+  const returnType = paginated ? `PaginatedResponse<${child.name}>` : `${child.name}[]`;
+
+  // 1. Find method
+  lines.push(
+    `  async ${findMethodName}(id: ${idTypeStr}, query: Query${child.name}Dto, ${tenantParam}user?: AuthUser): Promise<${returnType}> {`,
+  );
+  lines.push(`    await this.findOne(id, ${tenantArg}user);`);
+  lines.push(`    const qb = this.dataSource.getRepository(${child.name}).createQueryBuilder("${alias}");`);
+  lines.push(`    qb.where("${alias}.${childFk} = :parentId", { parentId: id });`);
+
+  const filters = queryFilterFields(child);
+  for (const field of filters) {
+    lines.push(...filterLines(alias, field, ir));
+  }
+
+  const search = searchClause(child, ir, alias);
+  if (search) {
+    lines.push("    if (query.search) {");
+    lines.push(`      qb.andWhere("(${search})", { search: \`%\${query.search}%\` });`);
+    lines.push("    }");
+  }
+
+  if (child.multitenant) {
+    lines.push("    applyTenantScope(qb, tenantId);");
+  }
+
+  if (child.softDelete) {
+    if (ir.auth.enabled) {
+      lines.push("    if (query.withDeleted) {");
+      lines.push(
+        `      if (!isAdmin(user, ${JSON.stringify(ir.auth.adminRole)})) throw new ForbiddenException("Only administrators can include deleted rows");`,
+      );
+      lines.push("      qb.withDeleted();");
+      lines.push("    }");
+    }
+  }
+
+  if (ir.auth.enabled && accessUsesOwner(child, "list")) {
+    lines.push(`    applyAccessScope(qb, user, "${ownerColumn(child)}", "${ir.auth.adminRole}");`);
+  }
+
+  const sort = sortField(child);
+  lines.push(`    const sortOrder = query.order ?? "ASC";`);
+  lines.push(`    qb.orderBy("${alias}.${sort}", sortOrder);`);
+
+  if (paginated) {
+    lines.push("    const page = Math.max(1, query.page ?? 1);");
+    lines.push("    const limit = Math.min(100, Math.max(1, query.limit ?? 20));");
+    lines.push("    const [data, total] = await qb.skip((page - 1) * limit).take(limit).getManyAndCount();");
+    lines.push("    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };");
+  } else {
+    lines.push("    return qb.getMany();");
+  }
+  lines.push("  }");
+  lines.push("");
+
+  // 2. Create method
+  lines.push(
+    `  async ${createMethodName}(id: ${idTypeStr}, dto: Create${child.name}Dto, ${tenantParam}user?: AuthUser): Promise<${child.name}> {`,
+  );
+  lines.push(`    await this.findOne(id, ${tenantArg}user);`);
+  lines.push(`    const repository = this.dataSource.getRepository(${child.name});`);
+  lines.push(`    const entity = repository.create();`);
+  lines.push(...assignmentLines(child, "create"));
+  lines.push(`    entity.${childFk} = id;`);
+  if (child.multitenant) {
+    lines.push("    entity.tenantId = tenantId;");
+  }
+  lines.push(...ownerCreateLine(child, ir));
+  lines.push(...manyToManyLines(child, "create"));
+  lines.push(`    const saved = await repository.save(entity);`);
+  const broadcastCrud = ir.websockets?.enabled && ir.websockets?.broadcastCrud;
+  if (broadcastCrud) {
+    lines.push(emitBroadcastEvent("created", child.name, entity.multitenant, "saved"));
+  }
+  lines.push("    return saved;");
+  lines.push("  }");
+
   return lines;
 }

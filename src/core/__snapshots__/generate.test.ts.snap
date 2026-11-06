@@ -1244,11 +1244,20 @@ export function setupSwagger(app: INestApplication, apiPrefix: string, bearerAut
   const builder = new DocumentBuilder()
     .setTitle("Blog API")
     .setDescription("Generated NestJS + TypeORM REST API")
-    .setVersion("1.0");
+    .setVersion("1.0")
+    .addTag("auth", "Authentication and account management")
+    .addTag("users", "Operations for User")
+    .addTag("posts", "Operations for Post")
+    .addTag("tags", "Operations for Tag")
+    .addTag("comments", "Operations for Comment");
 
   if (bearerAuth) builder.addBearerAuth();
   const document = SwaggerModule.createDocument(app, builder.build());
-  SwaggerModule.setup(\`\${apiPrefix}/docs\`, app, document);
+  SwaggerModule.setup(\`\${apiPrefix}/docs\`, app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
 }
 ",
     "path": "src/config/swagger.config.ts",
@@ -1644,6 +1653,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
@@ -1668,6 +1678,7 @@ export class CommentController {
   @ApiUnauthorizedResponse({ description: "Missing or invalid access token" })
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
+  @ApiParam({ name: "id", type: String, description: "Unique Comment identifier" })
   @Get(":id")
   findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.service.findOne(id, user);
@@ -1691,6 +1702,7 @@ export class CommentController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Comment identifier" })
   @Patch(":id")
   update(
     @Param("id", ParseUUIDPipe) id: string,
@@ -1707,6 +1719,7 @@ export class CommentController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Comment identifier" })
   @Delete(":id")
   @HttpCode(204)
   async remove(
@@ -1893,12 +1906,12 @@ export class CommentService {
 import { IsBoolean, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
 
 export class CreateCommentDto {
-  @ApiProperty({ type: String, example: "sample text" })
+  @ApiProperty({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @MinLength(1)
   body: string;
 
-  @ApiPropertyOptional({ type: Boolean, example: true })
+  @ApiPropertyOptional({ type: Boolean, default: "false", example: true })
   @IsOptional()
   @IsBoolean()
   isApproved?: boolean;
@@ -1945,12 +1958,12 @@ import { Transform } from "class-transformer";
 import { IsBoolean, IsOptional, IsString } from "class-validator";
 
 export class QueryCommentDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ type: String, example: "sample text" })
+  @ApiPropertyOptional({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @IsOptional()
   body?: string;
 
-  @ApiPropertyOptional({ type: Boolean, example: true })
+  @ApiPropertyOptional({ type: Boolean, default: "false", example: true })
   @Transform(({ value }) => (value === undefined ? undefined : value === true || value === "true"))
   @IsBoolean()
   @IsOptional()
@@ -1984,18 +1997,18 @@ import {
 } from "class-validator";
 
 export class CreatePostDto {
-  @ApiProperty({ type: String, example: "Hello world" })
+  @ApiProperty({ type: String, minLength: 3, maxLength: 160, example: "Hello world" })
   @IsString()
   @MaxLength(160)
   @MinLength(3)
   title: string;
 
-  @ApiProperty({ type: String, example: "hello-world" })
+  @ApiProperty({ type: String, maxLength: 180, example: "hello-world" })
   @IsString()
   @MaxLength(180)
   slug: string;
 
-  @ApiProperty({ type: String, example: "sample text" })
+  @ApiProperty({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @MinLength(1)
   content: string;
@@ -2009,7 +2022,7 @@ export class CreatePostDto {
   @IsDateString()
   publishedAt?: string | null;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -2064,17 +2077,17 @@ import { Type } from "class-transformer";
 import { IsDateString, IsIn, IsInt, IsOptional, IsString } from "class-validator";
 
 export class QueryPostDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ type: String, example: "Hello world" })
+  @ApiPropertyOptional({ type: String, minLength: 3, maxLength: 160, example: "Hello world" })
   @IsString()
   @IsOptional()
   title?: string;
 
-  @ApiPropertyOptional({ type: String, example: "hello-world" })
+  @ApiPropertyOptional({ type: String, maxLength: 180, example: "hello-world" })
   @IsString()
   @IsOptional()
   slug?: string;
 
-  @ApiPropertyOptional({ type: String, example: "sample text" })
+  @ApiPropertyOptional({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @IsOptional()
   content?: string;
@@ -2099,19 +2112,19 @@ export class QueryPostDto extends PaginationQueryDto {
   @IsOptional()
   publishedAtLte?: string;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @Type(() => Number)
   @IsInt()
   @IsOptional()
   views?: number;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @Type(() => Number)
   @IsInt()
   @IsOptional()
   viewsGte?: number;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @Type(() => Number)
   @IsInt()
   @IsOptional()
@@ -2133,6 +2146,10 @@ export class UpdatePostDto extends PartialType(CreatePostDto) {}
 import { Public } from "../../auth/decorators/public.decorator";
 import { Roles } from "../../auth/decorators/roles.decorator";
 import { AuthUser } from "../../auth/interfaces/auth-user.interface";
+import { Comment as CommentEntity } from "../comment/comment.entity";
+import { CreateCommentDto } from "../comment/dto/create-comment.dto";
+import { PaginatedCommentDto } from "../comment/dto/paginated-comment.dto";
+import { QueryCommentDto } from "../comment/dto/query-comment.dto";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { PaginatedPostDto } from "./dto/paginated-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
@@ -2160,6 +2177,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
@@ -2182,6 +2200,7 @@ export class PostController {
   @ApiOkResponse({ description: "Post found", type: PostEntity })
   @ApiNotFoundResponse({ description: "Record not found" })
   @Public()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Get(":id")
   findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.service.findOne(id, user);
@@ -2205,6 +2224,7 @@ export class PostController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Patch(":id")
   update(
     @Param("id", ParseUUIDPipe) id: string,
@@ -2221,6 +2241,7 @@ export class PostController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Delete(":id")
   @HttpCode(204)
   async remove(
@@ -2237,6 +2258,7 @@ export class PostController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Post(":id/restore")
   @HttpCode(204)
   async restore(
@@ -2244,6 +2266,35 @@ export class PostController {
     @CurrentUser() user?: AuthUser,
   ): Promise<void> {
     await this.service.restore(id, user);
+  }
+
+  @ApiOperation({ summary: "List comments for Post" })
+  @ApiOkResponse({ description: "comments list for Post", type: PaginatedCommentDto })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBearerAuth()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Get(":id/comments")
+  findComments(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Query() query: QueryCommentDto,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.service.findComments(id, query, user);
+  }
+
+  @ApiOperation({ summary: "Create Comment for Post" })
+  @ApiCreatedResponse({ description: "Comment created for Post", type: CommentEntity })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBadRequestResponse({ description: "Validation failed" })
+  @ApiBearerAuth()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Post(":id/comments")
+  createComment(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.service.createComment(id, dto, user);
   }
 }
 ",
@@ -2359,6 +2410,9 @@ export class PostModule {}
   {
     "content": "import { applyAccessScope, AuthUser, isAdmin } from "../../common/access/access-context";
 import { PaginatedResponse } from "../../common/interfaces/paginated-response.interface";
+import { Comment } from "../comment/comment.entity";
+import { CreateCommentDto } from "../comment/dto/create-comment.dto";
+import { QueryCommentDto } from "../comment/dto/query-comment.dto";
 import { Tag } from "../tag/tag.entity";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
@@ -2515,6 +2569,45 @@ export class PostService {
     if (!entity) throw new NotFoundException("Post not found");
     await this.repository.restore(id);
   }
+
+  async findComments(
+    id: string,
+    query: QueryCommentDto,
+    user?: AuthUser,
+  ): Promise<PaginatedResponse<Comment>> {
+    await this.findOne(id, user);
+    const qb = this.dataSource.getRepository(Comment).createQueryBuilder("comment");
+    qb.where("comment.postId = :parentId", { parentId: id });
+    if (query.body !== undefined)
+      qb.andWhere("comment.body ILIKE :body", { body: \`%\${query.body}%\` });
+    if (query.isApproved !== undefined)
+      qb.andWhere("comment.isApproved = :isApproved", { isApproved: query.isApproved });
+    if (query.search) {
+      qb.andWhere("(comment.body ILIKE :search)", { search: \`%\${query.search}%\` });
+    }
+    const sortOrder = query.order ?? "ASC";
+    qb.orderBy("comment.createdAt", sortOrder);
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const [data, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
+  async createComment(id: string, dto: CreateCommentDto, user?: AuthUser): Promise<Comment> {
+    await this.findOne(id, user);
+    const repository = this.dataSource.getRepository(Comment);
+    const entity = repository.create();
+    entity.body = dto.body;
+    if (dto.isApproved !== undefined) entity.isApproved = dto.isApproved;
+    entity.postId = dto.postId;
+    entity.postId = id;
+    if (user) entity.ownerId = user.id;
+    const saved = await repository.save(entity);
+    return saved;
+  }
 }
 ",
     "path": "src/modules/post/post.service.ts",
@@ -2524,7 +2617,7 @@ export class PostService {
 import { IsString, MaxLength } from "class-validator";
 
 export class CreateTagDto {
-  @ApiProperty({ type: String, example: "Ada Lovelace" })
+  @ApiProperty({ type: String, maxLength: 80, example: "Ada Lovelace" })
   @IsString()
   @MaxLength(80)
   name: string;
@@ -2566,7 +2659,7 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import { IsOptional, IsString } from "class-validator";
 
 export class QueryTagDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ type: String, example: "Ada Lovelace" })
+  @ApiPropertyOptional({ type: String, maxLength: 80, example: "Ada Lovelace" })
   @IsString()
   @IsOptional()
   name?: string;
@@ -2614,6 +2707,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
@@ -2636,6 +2730,7 @@ export class TagController {
   @ApiOkResponse({ description: "Tag found", type: TagEntity })
   @ApiNotFoundResponse({ description: "Record not found" })
   @Public()
+  @ApiParam({ name: "id", type: String, description: "Unique Tag identifier" })
   @Get(":id")
   findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.service.findOne(id, user);
@@ -2661,6 +2756,7 @@ export class TagController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin", "editor")
+  @ApiParam({ name: "id", type: String, description: "Unique Tag identifier" })
   @Patch(":id")
   update(
     @Param("id", ParseUUIDPipe) id: string,
@@ -2677,6 +2773,7 @@ export class TagController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Tag identifier" })
   @Delete(":id")
   @HttpCode(204)
   async remove(
@@ -2860,7 +2957,7 @@ export class QueryUserDto extends PaginationQueryDto {
 import { IsEmail, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class UpdateProfileDto {
-  @ApiPropertyOptional({ type: String, example: "user@example.com" })
+  @ApiPropertyOptional({ type: String, maxLength: 255, example: "user@example.com" })
   @IsOptional()
   @IsString()
   @MaxLength(255)
@@ -5525,11 +5622,20 @@ export function setupSwagger(app: INestApplication, apiPrefix: string, bearerAut
   const builder = new DocumentBuilder()
     .setTitle("Blog API")
     .setDescription("Generated NestJS + TypeORM REST API")
-    .setVersion("1.0");
+    .setVersion("1.0")
+    .addTag("auth", "Authentication and account management")
+    .addTag("users", "Operations for User")
+    .addTag("posts", "Operations for Post")
+    .addTag("tags", "Operations for Tag")
+    .addTag("comments", "Operations for Comment");
 
   if (bearerAuth) builder.addBearerAuth();
   const document = SwaggerModule.createDocument(app, builder.build());
-  SwaggerModule.setup(\`\${apiPrefix}/docs\`, app, document);
+  SwaggerModule.setup(\`\${apiPrefix}/docs\`, app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
 }
 ",
     "path": "src/config/swagger.config.ts",
@@ -5925,6 +6031,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
@@ -5949,6 +6056,7 @@ export class CommentController {
   @ApiUnauthorizedResponse({ description: "Missing or invalid access token" })
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
+  @ApiParam({ name: "id", type: String, description: "Unique Comment identifier" })
   @Get(":id")
   findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.service.findOne(id, user);
@@ -5972,6 +6080,7 @@ export class CommentController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Comment identifier" })
   @Patch(":id")
   update(
     @Param("id", ParseUUIDPipe) id: string,
@@ -5988,6 +6097,7 @@ export class CommentController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Comment identifier" })
   @Delete(":id")
   @HttpCode(204)
   async remove(
@@ -6174,12 +6284,12 @@ export class CommentService {
 import { IsBoolean, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
 
 export class CreateCommentDto {
-  @ApiProperty({ type: String, example: "sample text" })
+  @ApiProperty({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @MinLength(1)
   body: string;
 
-  @ApiPropertyOptional({ type: Boolean, example: true })
+  @ApiPropertyOptional({ type: Boolean, default: "false", example: true })
   @IsOptional()
   @IsBoolean()
   isApproved?: boolean;
@@ -6226,12 +6336,12 @@ import { Transform } from "class-transformer";
 import { IsBoolean, IsOptional, IsString } from "class-validator";
 
 export class QueryCommentDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ type: String, example: "sample text" })
+  @ApiPropertyOptional({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @IsOptional()
   body?: string;
 
-  @ApiPropertyOptional({ type: Boolean, example: true })
+  @ApiPropertyOptional({ type: Boolean, default: "false", example: true })
   @Transform(({ value }) => (value === undefined ? undefined : value === true || value === "true"))
   @IsBoolean()
   @IsOptional()
@@ -6265,18 +6375,18 @@ import {
 } from "class-validator";
 
 export class CreatePostDto {
-  @ApiProperty({ type: String, example: "Hello world" })
+  @ApiProperty({ type: String, minLength: 3, maxLength: 160, example: "Hello world" })
   @IsString()
   @MaxLength(160)
   @MinLength(3)
   title: string;
 
-  @ApiProperty({ type: String, example: "hello-world" })
+  @ApiProperty({ type: String, maxLength: 180, example: "hello-world" })
   @IsString()
   @MaxLength(180)
   slug: string;
 
-  @ApiProperty({ type: String, example: "sample text" })
+  @ApiProperty({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @MinLength(1)
   content: string;
@@ -6290,7 +6400,7 @@ export class CreatePostDto {
   @IsDateString()
   publishedAt?: string | null;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -6345,17 +6455,17 @@ import { Type } from "class-transformer";
 import { IsDateString, IsIn, IsInt, IsOptional, IsString } from "class-validator";
 
 export class QueryPostDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ type: String, example: "Hello world" })
+  @ApiPropertyOptional({ type: String, minLength: 3, maxLength: 160, example: "Hello world" })
   @IsString()
   @IsOptional()
   title?: string;
 
-  @ApiPropertyOptional({ type: String, example: "hello-world" })
+  @ApiPropertyOptional({ type: String, maxLength: 180, example: "hello-world" })
   @IsString()
   @IsOptional()
   slug?: string;
 
-  @ApiPropertyOptional({ type: String, example: "sample text" })
+  @ApiPropertyOptional({ type: String, minLength: 1, example: "sample text" })
   @IsString()
   @IsOptional()
   content?: string;
@@ -6380,19 +6490,19 @@ export class QueryPostDto extends PaginationQueryDto {
   @IsOptional()
   publishedAtLte?: string;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @Type(() => Number)
   @IsInt()
   @IsOptional()
   views?: number;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @Type(() => Number)
   @IsInt()
   @IsOptional()
   viewsGte?: number;
 
-  @ApiPropertyOptional({ type: Number, example: 0 })
+  @ApiPropertyOptional({ type: Number, minimum: 0, default: "0", example: 0 })
   @Type(() => Number)
   @IsInt()
   @IsOptional()
@@ -6414,6 +6524,10 @@ export class UpdatePostDto extends PartialType(CreatePostDto) {}
 import { Public } from "../../auth/decorators/public.decorator";
 import { Roles } from "../../auth/decorators/roles.decorator";
 import { AuthUser } from "../../auth/interfaces/auth-user.interface";
+import { Comment as CommentEntity } from "../comment/comment.entity";
+import { CreateCommentDto } from "../comment/dto/create-comment.dto";
+import { PaginatedCommentDto } from "../comment/dto/paginated-comment.dto";
+import { QueryCommentDto } from "../comment/dto/query-comment.dto";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { PaginatedPostDto } from "./dto/paginated-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
@@ -6441,6 +6555,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
@@ -6463,6 +6578,7 @@ export class PostController {
   @ApiOkResponse({ description: "Post found", type: PostEntity })
   @ApiNotFoundResponse({ description: "Record not found" })
   @Public()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Get(":id")
   findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.service.findOne(id, user);
@@ -6486,6 +6602,7 @@ export class PostController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Patch(":id")
   update(
     @Param("id", ParseUUIDPipe) id: string,
@@ -6502,6 +6619,7 @@ export class PostController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Delete(":id")
   @HttpCode(204)
   async remove(
@@ -6518,6 +6636,7 @@ export class PostController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
   @Post(":id/restore")
   @HttpCode(204)
   async restore(
@@ -6525,6 +6644,35 @@ export class PostController {
     @CurrentUser() user?: AuthUser,
   ): Promise<void> {
     await this.service.restore(id, user);
+  }
+
+  @ApiOperation({ summary: "List comments for Post" })
+  @ApiOkResponse({ description: "comments list for Post", type: PaginatedCommentDto })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBearerAuth()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Get(":id/comments")
+  findComments(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Query() query: QueryCommentDto,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.service.findComments(id, query, user);
+  }
+
+  @ApiOperation({ summary: "Create Comment for Post" })
+  @ApiCreatedResponse({ description: "Comment created for Post", type: CommentEntity })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBadRequestResponse({ description: "Validation failed" })
+  @ApiBearerAuth()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Post(":id/comments")
+  createComment(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.service.createComment(id, dto, user);
   }
 }
 ",
@@ -6634,6 +6782,9 @@ export class PostModule {}
   {
     "content": "import { applyAccessScope, AuthUser, isAdmin } from "../../common/access/access-context";
 import { PaginatedResponse } from "../../common/interfaces/paginated-response.interface";
+import { Comment } from "../comment/comment.entity";
+import { CreateCommentDto } from "../comment/dto/create-comment.dto";
+import { QueryCommentDto } from "../comment/dto/query-comment.dto";
 import { Tag } from "../tag/tag.entity";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
@@ -6790,6 +6941,45 @@ export class PostService {
     if (!entity) throw new NotFoundException("Post not found");
     await this.repository.restore(id);
   }
+
+  async findComments(
+    id: string,
+    query: QueryCommentDto,
+    user?: AuthUser,
+  ): Promise<PaginatedResponse<Comment>> {
+    await this.findOne(id, user);
+    const qb = this.dataSource.getRepository(Comment).createQueryBuilder("comment");
+    qb.where("comment.postId = :parentId", { parentId: id });
+    if (query.body !== undefined)
+      qb.andWhere("comment.body LIKE :body", { body: \`%\${query.body}%\` });
+    if (query.isApproved !== undefined)
+      qb.andWhere("comment.isApproved = :isApproved", { isApproved: query.isApproved });
+    if (query.search) {
+      qb.andWhere("(comment.body LIKE :search)", { search: \`%\${query.search}%\` });
+    }
+    const sortOrder = query.order ?? "ASC";
+    qb.orderBy("comment.createdAt", sortOrder);
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const [data, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
+  async createComment(id: string, dto: CreateCommentDto, user?: AuthUser): Promise<Comment> {
+    await this.findOne(id, user);
+    const repository = this.dataSource.getRepository(Comment);
+    const entity = repository.create();
+    entity.body = dto.body;
+    if (dto.isApproved !== undefined) entity.isApproved = dto.isApproved;
+    entity.postId = dto.postId;
+    entity.postId = id;
+    if (user) entity.ownerId = user.id;
+    const saved = await repository.save(entity);
+    return saved;
+  }
 }
 ",
     "path": "src/modules/post/post.service.ts",
@@ -6799,7 +6989,7 @@ export class PostService {
 import { IsString, MaxLength } from "class-validator";
 
 export class CreateTagDto {
-  @ApiProperty({ type: String, example: "Ada Lovelace" })
+  @ApiProperty({ type: String, maxLength: 80, example: "Ada Lovelace" })
   @IsString()
   @MaxLength(80)
   name: string;
@@ -6841,7 +7031,7 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import { IsOptional, IsString } from "class-validator";
 
 export class QueryTagDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ type: String, example: "Ada Lovelace" })
+  @ApiPropertyOptional({ type: String, maxLength: 80, example: "Ada Lovelace" })
   @IsString()
   @IsOptional()
   name?: string;
@@ -6889,6 +7079,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
@@ -6911,6 +7102,7 @@ export class TagController {
   @ApiOkResponse({ description: "Tag found", type: TagEntity })
   @ApiNotFoundResponse({ description: "Record not found" })
   @Public()
+  @ApiParam({ name: "id", type: String, description: "Unique Tag identifier" })
   @Get(":id")
   findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.service.findOne(id, user);
@@ -6936,6 +7128,7 @@ export class TagController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin", "editor")
+  @ApiParam({ name: "id", type: String, description: "Unique Tag identifier" })
   @Patch(":id")
   update(
     @Param("id", ParseUUIDPipe) id: string,
@@ -6952,6 +7145,7 @@ export class TagController {
   @ApiNotFoundResponse({ description: "Record not found" })
   @ApiBearerAuth()
   @Roles("admin")
+  @ApiParam({ name: "id", type: String, description: "Unique Tag identifier" })
   @Delete(":id")
   @HttpCode(204)
   async remove(
@@ -7135,7 +7329,7 @@ export class QueryUserDto extends PaginationQueryDto {
 import { IsEmail, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class UpdateProfileDto {
-  @ApiPropertyOptional({ type: String, example: "user@example.com" })
+  @ApiPropertyOptional({ type: String, maxLength: 255, example: "user@example.com" })
   @IsOptional()
   @IsString()
   @MaxLength(255)

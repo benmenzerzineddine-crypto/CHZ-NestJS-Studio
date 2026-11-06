@@ -1,5 +1,6 @@
 import { isSystemEntity } from "@/core/model/defaults";
-import { toRestPath } from "@/core/model/naming";
+import { toKebabCase, toRestPath } from "@/core/model/naming";
+import { buildDerivedInverses } from "@/core/model/normalize";
 import type { Project } from "@/core/model/schema";
 import {
   OPERATION_METHODS,
@@ -42,6 +43,30 @@ export function buildEntityRouteGroups(
           path: `${basePath}/:id/restore`,
           access: entity.access.delete.level,
           note: "Restore a soft-deleted row",
+          throttle: entityThrottleStr,
+        });
+      }
+
+      const oneToManyInverses = buildDerivedInverses(project.entities).filter(
+        (inv) => inv.targetEntityId === entity.id && inv.kind === "one-to-many",
+      );
+      for (const inv of oneToManyInverses) {
+        const child = project.entities.find((candidate) => candidate.id === inv.sourceEntityId);
+        if (!child || isSystemEntity(child)) continue;
+        const subPath = toKebabCase(inv.name);
+        routes.push({
+          method: "GET",
+          path: `${basePath}/:id/${subPath}`,
+          access: child.access.list.level,
+          note: `List ${inv.name} for ${entity.name}`,
+          throttle: entityThrottleStr,
+          cache: entityCacheStr,
+        });
+        routes.push({
+          method: "POST",
+          path: `${basePath}/:id/${subPath}`,
+          access: child.access.create.level,
+          note: `Create ${child.name} for ${entity.name}`,
           throttle: entityThrottleStr,
         });
       }

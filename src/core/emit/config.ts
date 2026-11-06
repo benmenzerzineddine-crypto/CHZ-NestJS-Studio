@@ -127,6 +127,11 @@ export function emitSwaggerConfig(ir: ProjectIR): GeneratedFile {
   registry.addType("@nestjs/common", "INestApplication");
   registry.add("@nestjs/swagger", "DocumentBuilder", "SwaggerModule");
 
+  const tagLines = ir.entities
+    .map((e) => `    .addTag('${e.restPath}', 'Operations for ${e.name}')`)
+    .join("\n");
+  const authTag = ir.auth.enabled ? "\n    .addTag('auth', 'Authentication and account management')" : "";
+
   const content = `${registry.render()}export function setupSwagger(
   app: INestApplication,
   apiPrefix: string,
@@ -135,11 +140,15 @@ export function emitSwaggerConfig(ir: ProjectIR): GeneratedFile {
   const builder = new DocumentBuilder()
     .setTitle(${JSON.stringify(ir.name)})
     .setDescription("Generated NestJS + TypeORM REST API")
-    .setVersion("1.0");
+    .setVersion("1.0")${authTag ? authTag : ""}${tagLines ? "\n" + tagLines : ""};
 
   if (bearerAuth) builder.addBearerAuth();
   const document = SwaggerModule.createDocument(app, builder.build());
-  SwaggerModule.setup(\`\${apiPrefix}/docs\`, app, document);
+  SwaggerModule.setup(\`\${apiPrefix}/docs\`, app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
 }
 `;
   return file(SWAGGER_CONFIG_PATH, content);

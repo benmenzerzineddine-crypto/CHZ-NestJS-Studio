@@ -1,5 +1,7 @@
 import type { CustomEndpointIR, EntityIR, ProjectIR } from "../ir/types";
 import type { AccessRule } from "../model/schema";
+import pluralize from "pluralize";
+import { toKebabCase, toPascalCase } from "../model/naming";
 import { ImportRegistry } from "../ir/imports";
 import { sourceImport } from "./helpers";
 import {
@@ -48,7 +50,13 @@ function usesPublic(entity: EntityIR, ir: ProjectIR): boolean {
   if (!ir.auth.enabled) return false;
   return (
     Object.values(entity.access).some((rule) => rule.level === "public") ||
-    entity.customEndpoints.some((ep) => ep.access.level === "public")
+    entity.customEndpoints.some((ep) => ep.access.level === "public") ||
+    entity.derivedRelations.some(
+      (d) =>
+        d.kind === "one-to-many" &&
+        !d.source.isSystem &&
+        (d.source.access.list.level === "public" || d.source.access.create.level === "public"),
+    )
   );
 }
 
@@ -56,7 +64,13 @@ function usesRoles(entity: EntityIR, ir: ProjectIR): boolean {
   if (!ir.auth.enabled) return false;
   return (
     Object.values(entity.access).some((rule) => rule.level === "roles") ||
-    entity.customEndpoints.some((ep) => ep.access.level === "roles")
+    entity.customEndpoints.some((ep) => ep.access.level === "roles") ||
+    entity.derivedRelations.some(
+      (d) =>
+        d.kind === "one-to-many" &&
+        !d.source.isSystem &&
+        (d.source.access.list.level === "roles" || d.source.access.create.level === "roles"),
+    )
   );
 }
 
@@ -162,6 +176,7 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
     "ApiNotFoundResponse",
     "ApiOkResponse",
     "ApiOperation",
+    "ApiParam",
     "ApiTags",
     "ApiUnauthorizedResponse",
   );
@@ -175,6 +190,23 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
       sourceImport(path, `${entity.moduleDir}/dto/paginated-${entity.dtoPrefix}.dto.ts`),
       `Paginated${entity.name}Dto`,
     );
+  }
+
+  const oneToManyDerived = entity.derivedRelations.filter(
+    (derived) => derived.kind === "one-to-many" && !derived.source.isSystem,
+  );
+
+  for (const derived of oneToManyDerived) {
+    const child = derived.source;
+    registry.add(sourceImport(path, entityFilePath(child)), `${child.name} as ${child.name}Entity`);
+    registry.add(sourceImport(path, entityDtoPath(child, "create")), `Create${child.name}Dto`);
+    registry.add(sourceImport(path, entityDtoPath(child, "query")), `Query${child.name}Dto`);
+    if (child.options.pagination) {
+      registry.add(
+        sourceImport(path, `${child.moduleDir}/dto/paginated-${child.dtoPrefix}.dto.ts`),
+        `Paginated${child.name}Dto`,
+      );
+    }
   }
   if (entity.multitenant) {
     registry.add(sourceImport(path, CURRENT_TENANT_PATH), "CurrentTenant");
@@ -218,8 +250,11 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
   lines.push("  }");
   lines.push("");
 
+  const idParamDecorator = `  @ApiParam({ name: 'id', ${entity.primary.type === "int" ? "type: Number" : "type: String"}, description: 'Unique ${entity.name} identifier' })`;
+
   lines.push(...responseDecorators(entity, ir, "read").map((line) => `  ${line}`));
   lines.push(...accessDecorators(entity, ir, "read").map((line) => `  ${line}`));
+  lines.push(idParamDecorator);
   if (entity.cache) {
     registry.add("@nestjs/common", "Header");
     lines.push(`  @Header('Cache-Control', '${renderCacheControl(entity.cache)}')`);
@@ -240,6 +275,7 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
 
   lines.push(...responseDecorators(entity, ir, "update").map((line) => `  ${line}`));
   lines.push(...accessDecorators(entity, ir, "update").map((line) => `  ${line}`));
+  lines.push(idParamDecorator);
   lines.push("  @Patch(':id')");
   lines.push(
     `  update(@Param('id', ${idPipe}) id: ${idType}, @Body() dto: Update${entity.name}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
@@ -250,6 +286,7 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
 
   lines.push(...responseDecorators(entity, ir, "delete").map((line) => `  ${line}`));
   lines.push(...accessDecorators(entity, ir, "delete").map((line) => `  ${line}`));
+  lines.push(idParamDecorator);
   lines.push("  @Delete(':id')");
   lines.push("  @HttpCode(204)");
   lines.push(
@@ -262,6 +299,7 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
     lines.push("");
     lines.push(...responseDecorators(entity, ir, "restore").map((line) => `  ${line}`));
     lines.push(...accessDecorators(entity, ir, "delete").map((line) => `  ${line}`));
+    lines.push(idParamDecorator);
     lines.push("  @Post(':id/restore')");
     lines.push("  @HttpCode(204)");
     lines.push(
@@ -271,10 +309,49 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
     lines.push("  }");
   }
 
+  for (const derived of oneToManyDerived) {
+    const child = derived.source;
+    const subPath = toKebabCase(derived.name);
+    const findMethod = `find${toPascalCase(derived.name)}`;
+    const createMethod = `create${toPascalCase(pluralize.singular(derived.name)) || child.name}`;
+    const childListType = child.options.pagination ? `Paginated${child.name}Dto` : `[${child.name}Entity]`;
+
+    lines.push("");
+    lines.push(`  @ApiOperation({ summary: "List ${derived.name} for ${entity.name}" })`);
+    lines.push(`  @ApiOkResponse({ description: "${derived.name} list for ${entity.name}", type: ${childListType} })`);
+    lines.push(`  @ApiNotFoundResponse({ description: "${entity.name} not found" })`);
+    lines.push(...accessDecoratorsForRule(child.access.list, ir).map((line) => `  ${line}`));
+    lines.push(idParamDecorator);
+    lines.push(`  @Get(':id/${subPath}')`);
+    lines.push(
+      `  ${findMethod}(@Param('id', ${idPipe}) id: ${idType}, @Query() query: Query${child.name}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
+    );
+    lines.push(`    return this.service.${findMethod}(id, query, ${tenantArg}user);`);
+    lines.push("  }");
+
+    lines.push("");
+    lines.push(`  @ApiOperation({ summary: "Create ${child.name} for ${entity.name}" })`);
+    lines.push(`  @ApiCreatedResponse({ description: "${child.name} created for ${entity.name}", type: ${child.name}Entity })`);
+    lines.push(`  @ApiNotFoundResponse({ description: "${entity.name} not found" })`);
+    lines.push(`  @ApiBadRequestResponse({ description: "Validation failed" })`);
+    lines.push(...accessDecoratorsForRule(child.access.create, ir).map((line) => `  ${line}`));
+    lines.push(idParamDecorator);
+    lines.push(`  @Post(':id/${subPath}')`);
+    lines.push(
+      `  ${createMethod}(@Param('id', ${idPipe}) id: ${idType}, @Body() dto: Create${child.name}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
+    );
+    lines.push(`    return this.service.${createMethod}(id, dto, ${tenantArg}user);`);
+    lines.push("  }");
+  }
+
   for (const ep of entity.customEndpoints) {
     lines.push("");
     lines.push(...customEndpointResponseDecorators(ep, ir).map((line) => `  ${line}`));
     lines.push(...accessDecoratorsForRule(ep.access, ir).map((line) => `  ${line}`));
+    const pathParams = Array.from(ep.path.matchAll(/:([a-zA-Z0-9_]+)/g)).map((m) => m[1]);
+    for (const param of pathParams) {
+      lines.push(`  @ApiParam({ name: '${param}', required: true, description: '${param} path parameter' })`);
+    }
     if (ep.skipThrottle) {
       registry.add("@nestjs/throttler", "SkipThrottle");
       lines.push("  @SkipThrottle()");
