@@ -8,146 +8,19 @@ import {
   AUTH_RESERVED_FIELD_NAMES,
 } from "../model/defaults";
 import type {
-  Driver,
   EntityDef,
   EnumDef,
   FieldDef,
-  FieldType,
   Project,
   RelationDef,
 } from "../model/schema";
 import { toCamelCase, toEntityName, toEnumName, toFieldName } from "./naming";
+import { parseSqlType } from "./sql/data-types";
+import { cleanSql, parseEnumDefinitions, splitSqlClauses } from "./sql/tokenizer";
+import type { ParsedTable, SqlImportOptions } from "./sql/types";
 
-interface ParsedColumn {
-  name: string;
-  type: FieldType;
-  enumName?: string;
-  enumValues?: string[];
-  required: boolean;
-  unique: boolean;
-  primary: boolean;
-  reference?: {
-    table: string;
-    column: string;
-    cascade?: boolean;
-  };
-}
-
-interface ParsedTable {
-  rawName: string;
-  entityName: string;
-  columns: ParsedColumn[];
-  foreignKeys: Array<{
-    column: string;
-    targetTable: string;
-    targetColumn: string;
-    cascade?: boolean;
-  }>;
-  primaryKeys: string[];
-}
-
-export interface SqlImportOptions {
-  projectName?: string;
-  driver?: Driver;
-  defaultAuth?: boolean;
-}
-
-export function parseSqlType(rawType: string): {
-  type: FieldType;
-  enumValues?: string[];
-} {
-  const norm = rawType.trim().toLowerCase();
-
-  if (norm.startsWith("enum")) {
-    const match = norm.match(/enum\s*\(([^)]+)\)/i);
-    if (match && match[1]) {
-      const values = match[1]
-        .split(",")
-        .map((v) => v.trim().replace(/^['"]|['"]$/g, ""))
-        .filter(Boolean);
-      return { type: "enum", enumValues: values };
-    }
-    return { type: "enum" };
-  }
-
-  if (
-    norm.includes("serial") ||
-    norm.includes("int") ||
-    norm === "integer" ||
-    norm === "smallint" ||
-    norm === "tinyint" ||
-    norm === "bigint"
-  ) {
-    return { type: "int" };
-  }
-
-  if (norm.includes("float") || norm.includes("real") || norm.includes("double")) {
-    return { type: "float" };
-  }
-
-  if (norm.includes("decimal") || norm.includes("numeric") || norm.includes("money")) {
-    return { type: "decimal" };
-  }
-
-  if (norm.includes("bool")) {
-    return { type: "boolean" };
-  }
-
-  if (norm === "uuid") {
-    return { type: "uuid" };
-  }
-
-  if (norm === "date") {
-    return { type: "date" };
-  }
-
-  if (norm.includes("time") || norm.includes("date")) {
-    return { type: "datetime" };
-  }
-
-  if (norm.includes("json")) {
-    return { type: "json" };
-  }
-
-  if (norm.includes("text") || norm.includes("clob")) {
-    return { type: "text" };
-  }
-
-  return { type: "string" };
-}
-
-/**
- * Strips comments and clean SQL input
- */
-function cleanSql(sql: string): string {
-  return sql
-    .replace(/\/\*[\s\S]*?\*\//g, "") // multi-line comments
-    .replace(/--.*$/gm, "") // single-line comments
-    .trim();
-}
-
-/**
- * Extract PostgreSQL CREATE TYPE ... AS ENUM ('val1', 'val2')
- */
-function parseEnumDefinitions(sql: string): Map<string, string[]> {
-  const enumMap = new Map<string, string[]>();
-  const enumRegex = /CREATE\s+TYPE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w"]+\.)?["`]?(\w+)["`]?\s+AS\s+ENUM\s*\(([^)]+)\)/gi;
-
-  let match: RegExpExecArray | null;
-  while ((match = enumRegex.exec(sql)) !== null) {
-    const rawName = match[1];
-    const rawValues = match[2];
-    if (rawName && rawValues) {
-      const values = rawValues
-        .split(",")
-        .map((v) => v.trim().replace(/^['"]|['"]$/g, ""))
-        .filter(Boolean);
-      enumMap.set(rawName.toLowerCase(), values);
-    }
-  }
-
-  return enumMap;
-}
+export { parseSqlType } from "./sql/data-types";
+export type { SqlImportOptions } from "./sql/types";
 
 export function parseSqlDdl(sql: string, options: SqlImportOptions = {}): Project {
   const cleaned = cleanSql(sql);
@@ -186,23 +59,7 @@ export function parseSqlDdl(sql: string, options: SqlImportOptions = {}): Projec
       primaryKeys: [],
     };
 
-    // Split body by commas that are not inside parentheses
-    const lines: string[] = [];
-    let current = "";
-    let lineParenDepth = 0;
-
-    for (let i = 0; i < body.length; i++) {
-      const char = body[i];
-      if (char === "(") lineParenDepth++;
-      else if (char === ")") lineParenDepth--;
-      else if (char === "," && lineParenDepth === 0) {
-        lines.push(current.trim());
-        current = "";
-        continue;
-      }
-      current += char;
-    }
-    if (current.trim()) lines.push(current.trim());
+    const lines = splitSqlClauses(body);
 
     for (const line of lines) {
       const trimmed = line.trim();

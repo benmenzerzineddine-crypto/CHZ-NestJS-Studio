@@ -1,7 +1,7 @@
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import type { FieldDef, FieldValidators } from "@/core/model/schema";
-import { optionalNumber } from "./FieldHelpers";
 
 export interface FieldValidationSectionProps {
   field: FieldDef;
@@ -26,24 +26,18 @@ export function FieldValidationSection({
           <div className="mt-2 grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="field-min">Minimum</Label>
-              <Input
+              <NumberInput
                 id="field-min"
-                type="number"
                 value={field.validators?.min ?? ""}
-                onChange={(event) =>
-                  onUpdateValidators({ min: optionalNumber(event.target.value) })
-                }
+                onChange={(val) => onUpdateValidators({ min: val })}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="field-max">Maximum</Label>
-              <Input
+              <NumberInput
                 id="field-max"
-                type="number"
                 value={field.validators?.max ?? ""}
-                onChange={(event) =>
-                  onUpdateValidators({ max: optionalNumber(event.target.value) })
-                }
+                onChange={(val) => onUpdateValidators({ max: val })}
               />
             </div>
           </div>
@@ -56,26 +50,20 @@ export function FieldValidationSection({
           <div className="mt-2 grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="field-min-length">Min length</Label>
-              <Input
+              <NumberInput
                 id="field-min-length"
-                type="number"
                 min={0}
                 value={field.validators?.minLength ?? ""}
-                onChange={(event) =>
-                  onUpdateValidators({ minLength: optionalNumber(event.target.value, 0) })
-                }
+                onChange={(val) => onUpdateValidators({ minLength: val })}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="field-max-length">Max length</Label>
-              <Input
+              <NumberInput
                 id="field-max-length"
-                type="number"
                 min={1}
                 value={field.validators?.maxLength ?? ""}
-                onChange={(event) =>
-                  onUpdateValidators({ maxLength: optionalNumber(event.target.value, 1) })
-                }
+                onChange={(val) => onUpdateValidators({ maxLength: val })}
               />
             </div>
             <div className="space-y-1.5">

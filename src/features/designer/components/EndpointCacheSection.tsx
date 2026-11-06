@@ -1,6 +1,6 @@
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
 import { Select } from "@/components/ui/select";
 
 export type CacheScope = "public" | "private" | "no-cache" | "no-store";
@@ -40,12 +40,11 @@ export function EndpointCacheSection({
         <div className="grid grid-cols-3 gap-2 pt-1">
           <div>
             <Label className="text-[11px] text-muted">Max Age (s)</Label>
-            <Input
-              type="number"
+            <NumberInput
               min={0}
               max={31536000}
               value={cacheMaxAge}
-              onChange={(e) => onCacheMaxAgeChange(Number.parseInt(e.target.value, 10) || 0)}
+              onChange={(val) => onCacheMaxAgeChange(val ?? 0)}
               className="mt-1 text-xs"
             />
           </div>
@@ -64,13 +63,12 @@ export function EndpointCacheSection({
           </div>
           <div>
             <Label className="text-[11px] text-muted">Shared Max Age (s)</Label>
-            <Input
-              type="number"
+            <NumberInput
               min={0}
               max={31536000}
               placeholder="Optional"
               value={cacheSharedMaxAge}
-              onChange={(e) => onCacheSharedMaxAgeChange(e.target.value)}
+              onChange={(val) => onCacheSharedMaxAgeChange(val !== undefined ? String(val) : "")}
               className="mt-1 text-xs"
             />
           </div>

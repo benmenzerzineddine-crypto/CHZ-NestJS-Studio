@@ -1,8 +1,8 @@
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import type { FieldColumn, FieldDef, Project } from "@/core/model/schema";
-import { optionalNumber } from "./FieldHelpers";
 
 export interface FieldColumnConfigSectionProps {
   field: FieldDef;
@@ -68,16 +68,13 @@ export function FieldColumnConfigSection({
         {field.type === "string" ? (
           <div className="space-y-1.5">
             <Label htmlFor="field-length">Column length</Label>
-            <Input
+            <NumberInput
               id="field-length"
-              type="number"
               min={1}
               max={65535}
               value={field.column?.length ?? ""}
               placeholder="255"
-              onChange={(event) =>
-                onUpdateColumn({ length: optionalNumber(event.target.value, 1) })
-              }
+              onChange={(val) => onUpdateColumn({ length: val })}
             />
           </div>
         ) : null}
@@ -86,30 +83,24 @@ export function FieldColumnConfigSection({
           <>
             <div className="space-y-1.5">
               <Label htmlFor="field-precision">Precision</Label>
-              <Input
+              <NumberInput
                 id="field-precision"
-                type="number"
                 min={1}
                 max={65}
                 value={field.column?.precision ?? ""}
                 placeholder="10"
-                onChange={(event) =>
-                  onUpdateColumn({ precision: optionalNumber(event.target.value, 1) })
-                }
+                onChange={(val) => onUpdateColumn({ precision: val })}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="field-scale">Scale</Label>
-              <Input
+              <NumberInput
                 id="field-scale"
-                type="number"
                 min={0}
                 max={30}
                 value={field.column?.scale ?? ""}
                 placeholder="2"
-                onChange={(event) =>
-                  onUpdateColumn({ scale: optionalNumber(event.target.value, 0) })
-                }
+                onChange={(val) => onUpdateColumn({ scale: val })}
               />
             </div>
           </>

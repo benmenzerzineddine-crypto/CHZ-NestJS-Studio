@@ -1,26 +1,13 @@
 import {
   BookOpen,
-  Boxes,
-  FolderOpen,
   Loader2,
   Plus,
   Sparkles,
-  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { createProject } from "@/core/model/defaults";
 import type { Project } from "@/core/model/schema";
-import { DRIVER_LABELS } from "@/lib/drivers";
 import {
   deleteProject,
   listProjects,
@@ -33,15 +20,9 @@ import { useProjectStore } from "@/store/project.store";
 import { useUiStore } from "@/store/ui.store";
 import { ImportProjectDialog } from "./ImportProjectDialog";
 import { NewProjectDialog, type NewProjectInput } from "./NewProjectDialog";
-
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
+import { ProjectCard } from "./ProjectCard";
+import { EmptyProjectsState } from "./EmptyProjectsState";
+import { DeleteProjectDialog } from "./DeleteProjectDialog";
 
 export function ProjectsScreen() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -177,78 +158,21 @@ export function ProjectsScreen() {
           Loading projects…
         </div>
       ) : projects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface/40 px-6 py-20 text-center">
-          <div className="mb-4 rounded-full border border-border bg-surface-raised p-3">
-            <Boxes className="h-6 w-6 text-muted" />
-          </div>
-          <h2 className="text-base font-medium text-foreground">No projects yet</h2>
-          <p className="mt-1 max-w-sm text-sm text-muted">
-            Start with a data model. Authentication, CRUD endpoints and the full
-            NestJS project are generated from it.
-          </p>
-          <div className="mt-5 flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setImportOpen(true)}>
-              <Sparkles className="h-4 w-4" />
-              Import schema
-            </Button>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Create your first project
-            </Button>
-          </div>
-        </div>
+        <EmptyProjectsState
+          onImportClick={() => setImportOpen(true)}
+          onCreateClick={() => setCreateOpen(true)}
+        />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {projects.map((project) => {
-            const busy = busyId === project.id;
-            return (
-              <div
-                key={project.id}
-                className="group relative rounded-xl border border-border bg-surface transition-colors hover:border-border-strong"
-              >
-                <button
-                  type="button"
-                  onClick={() => void handleOpen(project)}
-                  disabled={busy}
-                  className="flex h-full w-full flex-col items-start gap-3 rounded-xl p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60"
-                >
-                  <div className="flex w-full items-start justify-between gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised">
-                      {busy ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-muted" />
-                      ) : (
-                        <FolderOpen className="h-4 w-4 text-accent" />
-                      )}
-                    </div>
-                    <Badge>{DRIVER_LABELS[project.driver] ?? project.driver}</Badge>
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {project.name}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {project.entityCount}{" "}
-                      {project.entityCount === 1 ? "entity" : "entities"}
-                    </p>
-                  </div>
-
-                  <p className="mt-auto pt-2 text-[11px] text-muted/80">
-                    Updated {formatDate(project.updatedAt)}
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPendingDelete(project)}
-                  className="absolute right-3 top-14 rounded-md p-1.5 text-muted opacity-0 transition-opacity hover:bg-surface-hover hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 group-hover:opacity-100"
-                  aria-label={`Delete ${project.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            );
-          })}
+          {projects.map((project) => (
+            <ProjectCard
+              key={project.id}
+              project={project}
+              busy={busyId === project.id}
+              onOpen={handleOpen}
+              onDeleteRequest={setPendingDelete}
+            />
+          ))}
         </div>
       )}
 
@@ -258,31 +182,11 @@ export function ProjectsScreen() {
         onCreate={handleCreate}
       />
 
-      <Dialog
-        open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete project?</DialogTitle>
-            <DialogDescription>
-              {pendingDelete
-                ? `"${pendingDelete.name}" will be removed from this device. Generated code already exported is not affected.`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={() => void handleDelete()}>
-              Delete project
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteProjectDialog
+        pendingDelete={pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={handleDelete}
+      />
 
       <ImportProjectDialog
         open={importOpen}

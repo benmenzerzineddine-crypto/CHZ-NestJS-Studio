@@ -1,6 +1,6 @@
 import { CardSection } from "@/components/ui/card-section";
 import { FormRow, ToggleRow } from "@/components/ui/form-row";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Select } from "@/components/ui/select";
 import type { Project, StorageDriver } from "@/core/model/schema";
 
@@ -62,18 +62,16 @@ export function StorageSettingsSection({
             hint="Maximum allowed file size in megabytes (1 to 500 MB)."
             htmlFor="settings-upload-max-size"
           >
-            <Input
+            <NumberInput
               id="settings-upload-max-size"
-              type="number"
               min={1}
               max={500}
               value={uploads.maxFileSizeMb}
-              onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10);
-                if (!Number.isNaN(parsed)) {
+              onChange={(val) => {
+                if (val !== undefined) {
                   onUpdate((draft) => {
                     if (draft.settings.uploads) {
-                      draft.settings.uploads.maxFileSizeMb = Math.max(1, Math.min(500, parsed));
+                      draft.settings.uploads.maxFileSizeMb = Math.max(1, Math.min(500, val));
                     }
                   });
                 }

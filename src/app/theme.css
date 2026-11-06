@@ -1,6 +1,59 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
+:root,
+.dark,
+[data-theme="dark"] {
+  /* HeroUI Primary / Accent Theming mapped to App Palette */
+  --accent: #7c6cff;
+  --accent-hover: #6a58f5;
+  --accent-pressed: #5845ea;
+  --accent-foreground: #ffffff;
+  --accent-soft: rgba(124, 108, 255, 0.15);
+  --accent-soft-hover: rgba(124, 108, 255, 0.25);
+  --accent-soft-foreground: #7c6cff;
+
+  --primary: #7c6cff;
+  --primary-hover: #6a58f5;
+  --primary-foreground: #ffffff;
+
+  --focus: #7c6cff;
+  --focus-ring: #7c6cff;
+
+  --success: #3ecf8e;
+  --success-foreground: #0b0d12;
+  --danger: #f05757;
+  --danger-foreground: #ffffff;
+  --warning: #e5b454;
+  --warning-foreground: #0b0d12;
+
+  --background: #0b0d12;
+  --foreground: #e7eaf2;
+  --muted: #8d95aa;
+
+  --surface: #101319;
+  --surface-foreground: #e7eaf2;
+  --surface-secondary: #161a23;
+  --surface-hover: #1c2130;
+  --border: #252b39;
+
+  --default: #1c2130;
+  --default-hover: #252b39;
+  --default-foreground: #e7eaf2;
+
+  /* HeroUI Form Fields */
+  --color-field: #101319;
+  --color-field-hover: #161a23;
+  --field-background: #101319;
+  --field-foreground: #e7eaf2;
+  --field-placeholder: #8d95aa;
+  --field-border: #252b39;
+  --field-border-hover: #343c50;
+  --field-border-focus: #7c6cff;
+  --field-focus: #101319;
+  --border-width-field: 1px;
+}
+
 @theme {
   --color-canvas: #0b0d12;
   --color-surface: #101319;
@@ -47,6 +100,32 @@
 
   ::selection {
     background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+
+  /* Disable browser native spin chevrons on number inputs */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    margin: 0 !important;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+  }
+
+  /* Clean HeroUI NumberField stepper buttons: remove duplicate outer/top/bottom borders */
+  .number-field__decrement-button {
+    border-top-width: 0 !important;
+    border-bottom-width: 0 !important;
+    border-left-width: 0 !important;
+    border-radius: 0 !important;
+  }
+  .number-field__increment-button {
+    border-top-width: 0 !important;
+    border-bottom-width: 0 !important;
+    border-right-width: 0 !important;
+    border-radius: 0 !important;
   }
 }
 

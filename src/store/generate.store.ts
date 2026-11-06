@@ -5,27 +5,22 @@ import type { Project } from "@/core/model/schema";
 import { errorMessage } from "@/lib/tauri";
 import { useProjectStore } from "./project.store";
 import { useUiStore } from "./ui.store";
+import {
+  type ViewMode,
+  type FileDiffInfo,
+  type DiffSummary,
+  computeFileDiff,
+  computeFileDiffStatus,
+  computeDiffSummary,
+} from "./generate-diff";
+
+export type { ViewMode, FileDiffInfo, DiffSummary };
 
 export type GenerateStatus = "idle" | "running" | "ready" | "error";
 
 export interface ExportRecord {
   revision: number;
   path: string;
-}
-
-export type ViewMode = "code" | "diff";
-
-export interface FileDiffInfo {
-  path: string;
-  original: string | null;
-  modified: string;
-  status: "added" | "modified" | "unchanged";
-}
-
-export interface DiffSummary {
-  added: number;
-  modified: number;
-  unchanged: number;
 }
 
 interface GenerateStore {
@@ -179,72 +174,17 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
 
   getFileDiff: (path) => {
     const { result, previousResult } = get();
-    if (!result) return null;
-    const modifiedFile = result.files.find((f) => f.path === path);
-    if (!modifiedFile) return null;
-
-    if (!previousResult) {
-      return {
-        path,
-        original: null,
-        modified: modifiedFile.content,
-        status: "added",
-      };
-    }
-
-    const originalFile = previousResult.files.find((f) => f.path === path);
-    if (!originalFile) {
-      return {
-        path,
-        original: null,
-        modified: modifiedFile.content,
-        status: "added",
-      };
-    }
-
-    if (originalFile.content === modifiedFile.content) {
-      return {
-        path,
-        original: originalFile.content,
-        modified: modifiedFile.content,
-        status: "unchanged",
-      };
-    }
-
-    return {
-      path,
-      original: originalFile.content,
-      modified: modifiedFile.content,
-      status: "modified",
-    };
+    return computeFileDiff(path, result, previousResult);
   },
 
   getFileDiffStatus: (path) => {
     const { result, previousResult } = get();
-    if (!result || !previousResult) return null;
-    const modifiedFile = result.files.find((f) => f.path === path);
-    if (!modifiedFile) return null;
-    const originalFile = previousResult.files.find((f) => f.path === path);
-    if (!originalFile) return "added";
-    return originalFile.content === modifiedFile.content ? "unchanged" : "modified";
+    return computeFileDiffStatus(path, result, previousResult);
   },
 
   getDiffSummary: () => {
     const { result, previousResult } = get();
-    if (!result || !previousResult) {
-      return { added: 0, modified: 0, unchanged: result?.files.length ?? 0 };
-    }
-    let added = 0;
-    let modified = 0;
-    let unchanged = 0;
-    const prevMap = new Map(previousResult.files.map((f) => [f.path, f.content]));
-    for (const file of result.files) {
-      const prev = prevMap.get(file.path);
-      if (prev === undefined) added++;
-      else if (prev === file.content) unchanged++;
-      else modified++;
-    }
-    return { added, modified, unchanged };
+    return computeDiffSummary(result, previousResult);
   },
 
   selectFile: (projectId, path) => {

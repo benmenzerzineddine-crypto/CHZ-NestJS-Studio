@@ -1,6 +1,6 @@
 import { CardSection } from "@/components/ui/card-section";
 import { FormRow, ToggleRow } from "@/components/ui/form-row";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import type { Project } from "@/core/model/schema";
 
 export interface ThrottlingSettingsSectionProps {
@@ -41,20 +41,18 @@ export function ThrottlingSettingsSection({
             hint="Sliding window duration for the request quota."
             htmlFor="settings-throttle-ttl"
           >
-            <Input
+            <NumberInput
               id="settings-throttle-ttl"
-              type="number"
               min={1}
               max={3600}
               value={throttling?.ttl ?? 60}
-              onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10);
-                if (!Number.isNaN(parsed)) {
+              onChange={(val) => {
+                if (val !== undefined) {
                   onUpdate((draft) => {
                     if (!draft.settings.throttling) {
                       draft.settings.throttling = { enabled: true, ttl: 60, limit: 100 };
                     }
-                    draft.settings.throttling.ttl = Math.max(1, Math.min(3600, parsed));
+                    draft.settings.throttling.ttl = Math.max(1, Math.min(3600, val));
                   });
                 }
               }}
@@ -65,20 +63,18 @@ export function ThrottlingSettingsSection({
             hint="Maximum number of requests permitted within the TTL window."
             htmlFor="settings-throttle-limit"
           >
-            <Input
+            <NumberInput
               id="settings-throttle-limit"
-              type="number"
               min={1}
               max={100000}
               value={throttling?.limit ?? 100}
-              onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10);
-                if (!Number.isNaN(parsed)) {
+              onChange={(val) => {
+                if (val !== undefined) {
                   onUpdate((draft) => {
                     if (!draft.settings.throttling) {
                       draft.settings.throttling = { enabled: true, ttl: 60, limit: 100 };
                     }
-                    draft.settings.throttling.limit = Math.max(1, Math.min(100000, parsed));
+                    draft.settings.throttling.limit = Math.max(1, Math.min(100000, val));
                   });
                 }
               }}

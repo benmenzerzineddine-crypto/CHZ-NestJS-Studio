@@ -1,6 +1,4 @@
 import { FileUp, Loader2, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,11 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { detectFormat, importProject, type ImportFormat } from "@/core/import";
-import type { Driver, EntityDef, Project } from "@/core/model/schema";
-import { validateProject } from "@/core/validate/validate";
+import type { Driver, Project } from "@/core/model/schema";
 import { DRIVER_OPTIONS } from "@/lib/drivers";
-import { errorMessage } from "@/lib/tauri";
+import { useImportProjectForm } from "./useImportProjectForm";
+import { ImportPreviewCard } from "./ImportPreviewCard";
 
 interface ImportProjectDialogProps {
   open: boolean;
@@ -26,102 +23,26 @@ interface ImportProjectDialogProps {
   onImport: (project: Project) => Promise<void>;
 }
 
-const SAMPLE_SQL = `-- Paste your PostgreSQL, MySQL, or SQLite DDL here
-CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP NOT NULL,
-  updated_at TIMESTAMP NOT NULL
-);
-
-CREATE TABLE posts (
-  id SERIAL PRIMARY KEY,
-  title VARCHAR(255) NOT NULL,
-  content TEXT NOT NULL,
-  author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
-);`;
-
 export function ImportProjectDialog({
   open,
   onOpenChange,
   onImport,
 }: ImportProjectDialogProps) {
-  const [content, setContent] = useState(SAMPLE_SQL);
-  const [name, setName] = useState("");
-  const [format, setFormat] = useState<ImportFormat | "auto">("auto");
-  const [driver, setDriver] = useState<Driver>("postgres");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setContent(SAMPLE_SQL);
-    setName("");
-    setFormat("auto");
-    setDriver("postgres");
-    setPending(false);
-    setError(null);
-  }, [open]);
-
-  // Real-time preview parse
-  const parsedPreview = useMemo(() => {
-    if (!content.trim()) return null;
-    try {
-      const detected = format === "auto" ? detectFormat(content) : format;
-      const project = importProject({
-        content,
-        format: detected,
-        projectName: name.trim() || undefined,
-        driver,
-      });
-      const issues = validateProject(project);
-      const errors = issues.filter((i) => i.severity === "error");
-      return {
-        ok: errors.length === 0,
-        format: detected,
-        project,
-        errors,
-      };
-    } catch (err) {
-      return {
-        ok: false,
-        format: format === "auto" ? detectFormat(content) : format,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }, [content, format, name, driver]);
-
-  async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      setContent(text);
-      if (!name) {
-        setName(file.name.replace(/\.[^/.]+$/, ""));
-      }
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-
-  async function handleImport() {
-    if (!parsedPreview?.ok || !parsedPreview.project) return;
-
-    setPending(true);
-    setError(null);
-    try {
-      await onImport(parsedPreview.project);
-      onOpenChange(false);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setPending(false);
-    }
-  }
+  const {
+    content,
+    setContent,
+    name,
+    setName,
+    format,
+    setFormat,
+    driver,
+    setDriver,
+    pending,
+    error,
+    parsedPreview,
+    handleFileUpload,
+    handleImport,
+  } = useImportProjectForm(open, onImport, onOpenChange);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -212,51 +133,7 @@ export function ImportProjectDialog({
           </div>
 
           {/* Real-time Parse Feedback Preview */}
-          {parsedPreview ? (
-            <div
-              className={`rounded-lg border p-3 text-xs ${
-                parsedPreview.ok
-                  ? "border-success/30 bg-success/5 text-foreground"
-                  : "border-warning/30 bg-warning/5 text-warning"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Badge variant="accent" className="uppercase text-[9px]">
-                    {parsedPreview.format}
-                  </Badge>
-                  {parsedPreview.ok && parsedPreview.project ? (
-                    <span className="font-medium">
-                      Detected {parsedPreview.project.entities.length} entities and{" "}
-                      {parsedPreview.project.enums.length} enums
-                    </span>
-                  ) : (
-                    <span className="font-medium text-danger">Parsing incomplete</span>
-                  )}
-                </div>
-                {parsedPreview.ok ? (
-                  <Badge variant="success" className="text-[9px]">
-                    Valid
-                  </Badge>
-                ) : null}
-              </div>
-
-              {parsedPreview.ok && parsedPreview.project ? (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {parsedPreview.project.entities.map((ent: EntityDef) => (
-                    <span
-                      key={ent.id}
-                      className="rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted font-mono"
-                    >
-                      {ent.name} ({ent.fields.length} cols, {ent.relations.length} rels)
-                    </span>
-                  ))}
-                </div>
-              ) : parsedPreview.error ? (
-                <p className="mt-1 text-[11px] text-danger">{parsedPreview.error}</p>
-              ) : null}
-            </div>
-          ) : null}
+          <ImportPreviewCard preview={parsedPreview} />
 
           {error ? <p className="text-xs text-danger">{error}</p> : null}
         </div>

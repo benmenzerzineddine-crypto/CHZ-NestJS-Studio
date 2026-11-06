@@ -1,5 +1,5 @@
 import { ToggleRow } from "@/components/ui/form-row";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Select } from "@/components/ui/select";
 import { isSystemEntity } from "@/core/model/defaults";
 import type { EntityDef } from "@/core/model/schema";
@@ -57,14 +57,12 @@ export function EntityPerformanceCard({ entity }: EntityPerformanceCardProps) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-muted block mb-1">Limit (requests)</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={1}
                 max={100000}
                 value={entity.options.throttle.limit}
-                onChange={(e) => {
-                  const val = Number.parseInt(e.target.value, 10);
-                  if (!Number.isNaN(val)) {
+                onChange={(val) => {
+                  if (val !== undefined) {
                     updateEntityOptions(entity.id, {
                       throttle: { ...entity.options.throttle!, limit: Math.max(1, val) },
                     });
@@ -74,14 +72,12 @@ export function EntityPerformanceCard({ entity }: EntityPerformanceCardProps) {
             </div>
             <div>
               <label className="text-[11px] text-muted block mb-1">Window (seconds)</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={1}
                 max={3600}
                 value={entity.options.throttle.ttl}
-                onChange={(e) => {
-                  const val = Number.parseInt(e.target.value, 10);
-                  if (!Number.isNaN(val)) {
+                onChange={(val) => {
+                  if (val !== undefined) {
                     updateEntityOptions(entity.id, {
                       throttle: { ...entity.options.throttle!, ttl: Math.max(1, val) },
                     });
@@ -99,14 +95,12 @@ export function EntityPerformanceCard({ entity }: EntityPerformanceCardProps) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[11px] text-muted block mb-1">Max Age (seconds)</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 max={31536000}
                 value={entity.options.cache.maxAge}
-                onChange={(e) => {
-                  const val = Number.parseInt(e.target.value, 10);
-                  if (!Number.isNaN(val)) {
+                onChange={(val) => {
+                  if (val !== undefined) {
                     updateEntityOptions(entity.id, {
                       cache: { ...entity.options.cache!, maxAge: Math.max(0, val) },
                     });
@@ -135,18 +129,16 @@ export function EntityPerformanceCard({ entity }: EntityPerformanceCardProps) {
             </div>
             <div>
               <label className="text-[11px] text-muted block mb-1">Shared Max Age (s-maxage)</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 max={31536000}
                 placeholder="Optional"
                 value={entity.options.cache.sharedMaxAge ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value ? Number.parseInt(e.target.value, 10) : undefined;
+                onChange={(val) => {
                   updateEntityOptions(entity.id, {
                     cache: {
                       ...entity.options.cache!,
-                      sharedMaxAge: val !== undefined && !Number.isNaN(val) ? Math.max(0, val) : undefined,
+                      sharedMaxAge: val !== undefined ? Math.max(0, val) : undefined,
                     },
                   });
                 }}

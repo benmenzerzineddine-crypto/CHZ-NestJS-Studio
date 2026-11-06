@@ -14,6 +14,7 @@ import {
 } from "@/store/project.store";
 import { useUiStore } from "@/store/ui.store";
 import { useGenerateStore } from "@/store/generate.store";
+import blogJson from "@/core/fixtures/blog.json";
 import { AppHeader } from "./AppHeader";
 import { Sidebar } from "./Sidebar";
 import { useWindowState } from "./use-window-state";
@@ -141,6 +142,34 @@ export default function App() {
   useKeyboardShortcuts();
   useUnsavedChangesGuard();
   useWindowState();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const screenParam = params.get("screen");
+    const demo = params.get("demo");
+    if (demo || screenParam) {
+      if (!useProjectStore.getState().project) {
+        useProjectStore.getState().openProject(blogJson as any);
+      }
+      if (screenParam) {
+        useUiStore.getState().setScreen(screenParam as any);
+      }
+      const scroll = params.get("scroll");
+      if (scroll) {
+        const doScroll = () => {
+          if (scroll === "bottom") {
+            const main = document.querySelector("main");
+            if (main) main.scrollTop = main.scrollHeight;
+          } else {
+            const el = document.getElementById(scroll) || document.querySelector(scroll);
+            el?.scrollIntoView({ behavior: "instant" });
+          }
+        };
+        doScroll();
+        setTimeout(doScroll, 50);
+      }
+    }
+  }, []);
 
   const project = useProjectStore((state) => state.project);
 

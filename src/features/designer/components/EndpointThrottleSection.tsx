@@ -1,5 +1,5 @@
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
 import { Select } from "@/components/ui/select";
 
 export type ThrottleMode = "default" | "custom" | "skip";
@@ -24,6 +24,7 @@ export function EndpointThrottleSection({
   return (
     <div className="rounded-lg border border-border bg-surface-raised/30 p-3 space-y-3">
       <Label className="text-xs font-semibold">Rate Limiting</Label>
+
       <Select
         value={throttleMode}
         onChange={(e) => onThrottleModeChange(e.target.value as ThrottleMode)}
@@ -38,23 +39,21 @@ export function EndpointThrottleSection({
         <div className="grid grid-cols-2 gap-2 pt-1">
           <div>
             <Label className="text-[11px] text-muted">Limit (requests)</Label>
-            <Input
-              type="number"
+            <NumberInput
               min={1}
               max={100000}
               value={throttleLimit}
-              onChange={(e) => onThrottleLimitChange(Number.parseInt(e.target.value, 10) || 1)}
+              onChange={(val) => onThrottleLimitChange(val ?? 1)}
               className="mt-1 text-xs"
             />
           </div>
           <div>
             <Label className="text-[11px] text-muted">Window (seconds)</Label>
-            <Input
-              type="number"
+            <NumberInput
               min={1}
               max={3600}
               value={throttleTtl}
-              onChange={(e) => onThrottleTtlChange(Number.parseInt(e.target.value, 10) || 1)}
+              onChange={(val) => onThrottleTtlChange(val ?? 1)}
               className="mt-1 text-xs"
             />
           </div>
