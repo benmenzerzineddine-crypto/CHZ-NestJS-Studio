@@ -262,6 +262,54 @@ export function emitAuthSpec(ir: ProjectIR): GeneratedFile {
     lines.push("  });");
   }
 
+  if (ir.auth.sessionManagement) {
+    lines.push("");
+    lines.push('  it("manages active sessions lifecycle", async () => {');
+    lines.push(`    const sessionUser = await createUser(app, [${defaultRole}]);`);
+    lines.push(`    const loginRes = await request(app.getHttpServer())`);
+    lines.push(`      .post("${api}/auth/login")`);
+    lines.push('      .set("User-Agent", "TestAgent/1.0")');
+    lines.push("      .send({ email: sessionUser.email, password: TEST_PASSWORD });");
+    lines.push("    expect(loginRes.status).toBe(200);");
+    lines.push("    const sessionToken = loginRes.body.accessToken;");
+    lines.push("");
+    lines.push(`    const sessionsRes = await request(app.getHttpServer())`);
+    lines.push(`      .get("${api}/auth/sessions")`);
+    lines.push("      .set(authHeader(sessionToken));");
+    lines.push("    expect(sessionsRes.status).toBe(200);");
+    lines.push("    expect(Array.isArray(sessionsRes.body)).toBe(true);");
+    lines.push("    expect(sessionsRes.body.length).toBeGreaterThan(0);");
+    lines.push("    const activeSession = sessionsRes.body[0];");
+    lines.push("    expect(activeSession.id).toBeTruthy();");
+    lines.push('    expect(activeSession.userAgent).toBe("TestAgent/1.0");');
+    lines.push("");
+    lines.push(`    const revokeRes = await request(app.getHttpServer())`);
+    lines.push(`      .delete(\`${api}/auth/sessions/\${activeSession.id}\`)`);
+    lines.push("      .set(authHeader(sessionToken));");
+    lines.push("    expect(revokeRes.status).toBe(204);");
+    lines.push("");
+    lines.push(`    const notFoundRevoke = await request(app.getHttpServer())`);
+    lines.push(`      .delete(\`${api}/auth/sessions/\${activeSession.id}\`)`);
+    lines.push("      .set(authHeader(sessionToken));");
+    lines.push("    expect(notFoundRevoke.status).toBe(404);");
+    lines.push("");
+    lines.push(`    await request(app.getHttpServer())`);
+    lines.push(`      .post("${api}/auth/login")`);
+    lines.push("      .send({ email: sessionUser.email, password: TEST_PASSWORD });");
+    lines.push("");
+    lines.push(`    const revokeAllRes = await request(app.getHttpServer())`);
+    lines.push(`      .delete("${api}/auth/sessions")`);
+    lines.push("      .set(authHeader(sessionToken));");
+    lines.push("    expect(revokeAllRes.status).toBe(204);");
+    lines.push("");
+    lines.push(`    const emptySessions = await request(app.getHttpServer())`);
+    lines.push(`      .get("${api}/auth/sessions")`);
+    lines.push("      .set(authHeader(sessionToken));");
+    lines.push("    expect(emptySessions.status).toBe(200);");
+    lines.push("    expect(emptySessions.body.length).toBe(0);");
+    lines.push("  });");
+  }
+
   lines.push("});");
 
   return file("test/auth.e2e-spec.ts", lines.join("\n") + "\n", "typescript");
