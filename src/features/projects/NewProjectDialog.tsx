@@ -17,6 +17,8 @@ import { toPackageName } from "@/core/model/defaults";
 import { DRIVER_OPTIONS } from "@/lib/drivers";
 import { errorMessage } from "@/lib/tauri";
 
+import { Sparkles } from "lucide-react";
+
 export interface NewProjectInput {
   name: string;
   driver: Driver;
@@ -27,12 +29,14 @@ interface NewProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (input: NewProjectInput) => Promise<void>;
+  onOpenTemplates?: () => void;
 }
 
 export function NewProjectDialog({
   open,
   onOpenChange,
   onCreate,
+  onOpenTemplates,
 }: NewProjectDialogProps) {
   const [name, setName] = useState("");
   const [packageName, setPackageName] = useState("");
@@ -141,6 +145,22 @@ export function NewProjectDialog({
           </div>
 
           {error ? <p className="text-xs text-danger">{error}</p> : null}
+
+          {onOpenTemplates ? (
+            <div className="flex items-center justify-center pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenChange(false);
+                  onOpenTemplates();
+                }}
+                className="text-xs text-accent hover:underline flex items-center gap-1.5"
+              >
+                <Sparkles className="h-3 w-3" />
+                Or start with a pre-configured starter template
+              </button>
+            </div>
+          ) : null}
 
           <DialogFooter>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>

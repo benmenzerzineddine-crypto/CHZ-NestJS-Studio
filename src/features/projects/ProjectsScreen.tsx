@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  LayoutTemplate,
   Loader2,
   Plus,
   Sparkles,
@@ -24,12 +25,14 @@ import { NewProjectDialog, type NewProjectInput } from "./NewProjectDialog";
 import { ProjectCard } from "./ProjectCard";
 import { EmptyProjectsState } from "./EmptyProjectsState";
 import { DeleteProjectDialog } from "./DeleteProjectDialog";
+import { TemplatesGalleryDialog } from "./TemplatesGalleryDialog";
 
 export function ProjectsScreen() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ProjectSummary | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -113,6 +116,28 @@ export function ProjectsScreen() {
     });
   }
 
+  async function handleCreateFromTemplate(project: Project) {
+    try {
+      await saveProject(project);
+      openProject(project);
+      void useGenerateStore.getState().run({ silent: true });
+      setScreen("settings");
+      pushToast({
+        kind: "success",
+        title: "Project created from template",
+        message: `${project.name} is ready with pre-configured models and endpoints.`,
+      });
+    } catch (error) {
+      pushToast({
+        kind: "error",
+        title: "Could not create project from template",
+        message: errorMessage(error),
+        detail: errorMessage(error),
+      });
+      throw error;
+    }
+  }
+
   async function handleDelete() {
     if (!pendingDelete) return;
 
@@ -148,6 +173,10 @@ export function ProjectsScreen() {
             <BookOpen className="h-4 w-4" />
             Documentation
           </Button>
+          <Button variant="secondary" onClick={() => setTemplatesOpen(true)}>
+            <LayoutTemplate className="h-4 w-4" />
+            Templates
+          </Button>
           <Button variant="secondary" onClick={() => setImportOpen(true)}>
             <Sparkles className="h-4 w-4" />
             Import schema
@@ -168,6 +197,7 @@ export function ProjectsScreen() {
         <EmptyProjectsState
           onImportClick={() => setImportOpen(true)}
           onCreateClick={() => setCreateOpen(true)}
+          onTemplatesClick={() => setTemplatesOpen(true)}
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -187,6 +217,7 @@ export function ProjectsScreen() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreate={handleCreate}
+        onOpenTemplates={() => setTemplatesOpen(true)}
       />
 
       <DeleteProjectDialog
@@ -199,6 +230,12 @@ export function ProjectsScreen() {
         open={importOpen}
         onOpenChange={setImportOpen}
         onImport={handleImportProject}
+      />
+
+      <TemplatesGalleryDialog
+        open={templatesOpen}
+        onOpenChange={setTemplatesOpen}
+        onSelectTemplate={handleCreateFromTemplate}
       />
     </div>
   );

@@ -1,14 +1,16 @@
-import { Boxes, Plus, Sparkles } from "lucide-react";
+import { Boxes, LayoutTemplate, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface EmptyProjectsStateProps {
   onImportClick: () => void;
   onCreateClick: () => void;
+  onTemplatesClick?: () => void;
 }
 
 export function EmptyProjectsState({
   onImportClick,
   onCreateClick,
+  onTemplatesClick,
 }: EmptyProjectsStateProps) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface/40 px-6 py-20 text-center">
@@ -21,6 +23,12 @@ export function EmptyProjectsState({
         NestJS project are generated from it.
       </p>
       <div className="mt-5 flex items-center gap-2">
+        {onTemplatesClick ? (
+          <Button variant="secondary" onClick={onTemplatesClick}>
+            <LayoutTemplate className="h-4 w-4" />
+            Explore templates
+          </Button>
+        ) : null}
         <Button variant="secondary" onClick={onImportClick}>
           <Sparkles className="h-4 w-4" />
           Import schema
