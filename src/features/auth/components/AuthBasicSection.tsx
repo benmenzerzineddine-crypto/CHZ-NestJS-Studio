@@ -41,7 +41,21 @@ export function AuthBasicSection({ auth, locked, onUpdate }: AuthBasicSectionPro
           hint="Issue rotating refresh tokens stored hashed in refresh_tokens."
           checked={auth.refreshTokens}
           onCheckedChange={(refreshTokens) =>
-            onUpdate((draft) => { draft.refreshTokens = refreshTokens; })
+            onUpdate((draft) => {
+              draft.refreshTokens = refreshTokens;
+              if (!refreshTokens) {
+                draft.sessionManagement = false;
+              }
+            })
+          }
+        />
+        <ToggleRow
+          label="Session management"
+          hint="Track active sessions with IP and User-Agent, and allow remote revocation."
+          checked={auth.sessionManagement ?? false}
+          disabled={!auth.refreshTokens}
+          onCheckedChange={(sessionManagement) =>
+            onUpdate((draft) => { draft.sessionManagement = sessionManagement; })
           }
         />
         <ToggleRow

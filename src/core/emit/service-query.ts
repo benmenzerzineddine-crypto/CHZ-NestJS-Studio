@@ -1,4 +1,4 @@
-import type { DerivedRelationIR, EntityIR, FieldIR, ProjectIR } from "../ir/types";
+import type { DerivedRelationIR, EntityIR, FieldIR, ProjectIR, RelationIR } from "../ir/types";
 import pluralize from "pluralize";
 import { toPascalCase } from "../model/naming";
 
@@ -374,6 +374,57 @@ export function buildDerivedOneToManyMethods(
     lines.push(emitBroadcastEvent("created", child.name, entity.multitenant, "saved"));
   }
   lines.push("    return saved;");
+  lines.push("  }");
+
+  return lines;
+}
+
+export function buildManyToManyMethods(
+  entity: EntityIR,
+  relation: RelationIR,
+  _ir: ProjectIR,
+): string[] {
+  const lines: string[] = [];
+  const target = relation.target;
+  const idTypeStr = idType(entity);
+  const targetIdTypeStr = relation.fkType === "number" ? "number" : "string";
+  const singleName = pluralize.singular(relation.name);
+  const targetParamName = `${singleName}Id`;
+  const findMethod = `find${toPascalCase(relation.name)}`;
+  const attachMethod = `attach${toPascalCase(relation.name)}`;
+  const detachMethod = `detach${toPascalCase(singleName)}`;
+  const tenantParam = entity.multitenant ? "tenantId: string, " : "";
+  const tenantArg = entity.multitenant ? "tenantId, " : "";
+  const propName = `${singleName}Ids`;
+
+  // 1. Find method: returns Target[]
+  lines.push(
+    `  async ${findMethod}(id: ${idTypeStr}, ${tenantParam}user?: AuthUser): Promise<${target.name}[]> {`,
+  );
+  lines.push(`    await this.findOne(id, ${tenantArg}user);`);
+  lines.push(`    return this.repository.createQueryBuilder().relation("${relation.name}").of(id).loadMany();`);
+  lines.push("  }");
+  lines.push("");
+
+  // 2. Attach method: adds ids and returns Target[]
+  lines.push(
+    `  async ${attachMethod}(id: ${idTypeStr}, dto: Attach${toPascalCase(relation.name)}Dto, ${tenantParam}user?: AuthUser): Promise<${target.name}[]> {`,
+  );
+  lines.push(`    await this.findOne(id, ${tenantArg}user);`);
+  lines.push(`    const ids = dto.${propName} ?? (dto as any).${relation.name}Ids ?? (dto as any).ids;`);
+  lines.push(`    if (ids && ids.length > 0) {`);
+  lines.push(`      await this.repository.createQueryBuilder().relation("${relation.name}").of(id).add(ids);`);
+  lines.push(`    }`);
+  lines.push(`    return this.${findMethod}(id, ${tenantArg}user);`);
+  lines.push("  }");
+  lines.push("");
+
+  // 3. Detach method: removes targetId
+  lines.push(
+    `  async ${detachMethod}(id: ${idTypeStr}, ${targetParamName}: ${targetIdTypeStr}, ${tenantParam}user?: AuthUser): Promise<void> {`,
+  );
+  lines.push(`    await this.findOne(id, ${tenantArg}user);`);
+  lines.push(`    await this.repository.createQueryBuilder().relation("${relation.name}").of(id).remove(${targetParamName});`);
   lines.push("  }");
 
   return lines;

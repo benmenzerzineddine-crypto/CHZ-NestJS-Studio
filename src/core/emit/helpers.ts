@@ -58,6 +58,8 @@ export const AUTH_REQUIRE_VERIFIED_EMAIL_PATH = "src/auth/decorators/require-ver
 export const AUTH_DTO_2FA_ENABLE_PATH = "src/auth/dto/two-factor-enable.dto.ts";
 export const AUTH_DTO_2FA_VERIFY_PATH = "src/auth/dto/two-factor-verify.dto.ts";
 export const AUTH_DTO_2FA_DISABLE_PATH = "src/auth/dto/two-factor-disable.dto.ts";
+export const AUTH_DTO_SESSION_PATH = "src/auth/dto/session.dto.ts";
+
 
 export function entityFilePath(entity: EntityIR): string {
   return entity.isSystem

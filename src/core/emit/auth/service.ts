@@ -44,6 +44,10 @@ export function emitAuthService(ir: ProjectIR): GeneratedFile {
     registry.add("typeorm", "IsNull");
     registry.add(sourceImport(AUTH_SERVICE_PATH, MAIL_SERVICE_PATH), "MailService");
   }
+  if (ir.auth.sessionManagement) {
+    registry.add("@nestjs/common", "NotFoundException");
+    registry.add("typeorm", "IsNull", "MoreThan");
+  }
   if (ir.auth.twoFactor) {
     registry.add("otplib", "authenticator");
     registry.add("qrcode", "toDataURL");
@@ -91,7 +95,45 @@ export function emitAuthService(ir: ProjectIR): GeneratedFile {
     constructorInjections.push("    private readonly mailService: MailService,");
   }
 
+  const sessionMethods = ir.auth.sessionManagement
+    ? `  async listSessions(userId: string) {
+    return this.refreshTokens.find({
+      where: {
+        userId,
+        revokedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+      },
+      order: {
+        createdAt: "DESC",
+      },
+    });
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    const session = await this.refreshTokens.findOne({
+      where: {
+        id: sessionId,
+        userId,
+        revokedAt: IsNull(),
+      },
+    });
+    if (!session) {
+      throw new NotFoundException("Session not found");
+    }
+    session.revokedAt = new Date();
+    await this.refreshTokens.save(session);
+  }
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.refreshTokens.update(
+      { userId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
+  }`
+    : "";
+
   const extraMethods: string[] = [
+    sessionMethods,
     buildPasswordResetMethods(ir),
     buildEmailVerificationMethods(ir),
     buildOAuthMethods(ir),
@@ -124,15 +166,15 @@ export class AuthService {
 ${constructorInjections.join("\n")}
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto${ir.auth.sessionManagement ? ", userAgent?: string, ipAddress?: string" : ""}) {
     if (!REGISTER_ENABLED) throw new ForbiddenException("Registration is disabled");
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) throw new ConflictException("Email already registered");
     const user = await this.usersService.create(dto.email, dto.password, [DEFAULT_ROLE]);
-    return this.issueTokens(user);
+    return this.issueTokens(user${ir.auth.sessionManagement ? ", userAgent, ipAddress" : ""});
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto${ir.auth.sessionManagement ? ", userAgent?: string, ipAddress?: string" : ""}) {
     const user = await this.usersService.findByEmail(dto.email, true);
     if (!user || !user.isActive || !(await this.usersService.checkPassword(user, dto.password))) {
       throw new UnauthorizedException("Invalid email or password");
@@ -144,10 +186,10 @@ ${ir.auth.twoFactor ? `    if (user.twoFactorEnabled) {
       );
       return { requiresTwoFactor: true, tempToken };
     }
-` : ""}    return this.issueTokens(user);
+` : ""}    return this.issueTokens(user${ir.auth.sessionManagement ? ", userAgent, ipAddress" : ""});
   }
 
-  async refresh(dto: RefreshTokenDto) {
+  async refresh(dto: RefreshTokenDto${ir.auth.sessionManagement ? ", userAgent?: string, ipAddress?: string" : ""}) {
     if (!REFRESH_TOKENS_ENABLED) throw new UnauthorizedException("Refresh tokens are disabled");
     const tokenHash = this.hashToken(dto.refreshToken);
     const stored = await this.refreshTokens.findOne({
@@ -166,7 +208,7 @@ ${ir.auth.twoFactor ? `    if (user.twoFactorEnabled) {
 
     stored.revokedAt = new Date();
     await this.refreshTokens.save(stored);
-    return this.issueTokens(stored.user);
+    return this.issueTokens(stored.user${ir.auth.sessionManagement ? ", userAgent, ipAddress" : ""});
   }
 
   async logout(dto: RefreshTokenDto): Promise<{ success: boolean }> {
@@ -183,7 +225,7 @@ ${ir.auth.twoFactor ? `    if (user.twoFactorEnabled) {
     return user;
   }
 
-  private async issueTokens(user: User) {
+  private async issueTokens(user: User${ir.auth.sessionManagement ? ", userAgent?: string, ipAddress?: string" : ""}) {
     const accessToken = await this.jwtService.signAsync({
 ${issueTokensPayload}
     });
@@ -197,7 +239,13 @@ ${issueTokensPayload}
     const ttl = parseDuration(this.config.get<string>("JWT_REFRESH_TTL") ?? ${JSON.stringify(ir.auth.refreshTokenTtl)});
     const expiresAt = new Date(Date.now() + ttl * 1000);
     await this.refreshTokens.save(
-      this.refreshTokens.create({ tokenHash, expiresAt, userId: user.id }),
+      ${ir.auth.sessionManagement ? `this.refreshTokens.create({
+        tokenHash,
+        expiresAt,
+        userId: user.id,
+        userAgent: userAgent ?? null,
+        ipAddress: ipAddress ?? null,
+      })` : `this.refreshTokens.create({ tokenHash, expiresAt, userId: user.id })`},
     );
     return { accessToken, refreshToken, user };
   }

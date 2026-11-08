@@ -23,7 +23,9 @@ import {
   emitBroadcastEvent,
   buildCustomEndpointStubs,
   buildDerivedOneToManyMethods,
+  buildManyToManyMethods,
 } from "./service-query";
+import { toKebabCase, toPascalCase } from "../model/naming";
 
 export function emitService(ir: ProjectIR, entity: EntityIR): GeneratedFile {
   const path = entityServicePath(entity);
@@ -62,9 +64,18 @@ export function emitService(ir: ProjectIR, entity: EntityIR): GeneratedFile {
     accessImports.push("applyAccessScope");
   }
   registry.add(sourceImport(path, ACCESS_PATH), ...accessImports);
+  const manyToManyRelations = entity.relations.filter(
+    (relation) => relation.kind === "many-to-many" && !relation.target.isSystem,
+  );
   for (const relation of entity.relations) {
     if (relation.kind === "many-to-many") {
       registry.add(sourceImport(path, entityFilePath(relation.target)), relation.target.name);
+      if (!relation.target.isSystem) {
+        registry.add(
+          sourceImport(path, `${entity.moduleDir}/dto/attach-${toKebabCase(relation.name)}.dto.ts`),
+          `Attach${toPascalCase(relation.name)}Dto`,
+        );
+      }
     }
   }
 
@@ -181,6 +192,11 @@ export function emitService(ir: ProjectIR, entity: EntityIR): GeneratedFile {
   for (const derived of oneToManyDerived) {
     lines.push("");
     lines.push(...buildDerivedOneToManyMethods(entity, derived, ir));
+  }
+
+  for (const relation of manyToManyRelations) {
+    lines.push("");
+    lines.push(...buildManyToManyMethods(entity, relation, ir));
   }
 
   lines.push(...buildCustomEndpointStubs(entity));

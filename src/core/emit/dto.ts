@@ -1,6 +1,8 @@
 import type { EntityIR, ProjectIR } from "../ir/types";
 import type { FieldIR } from "../ir/types";
 import type { RelationIR } from "../ir/types";
+import pluralize from "pluralize";
+import { toKebabCase, toPascalCase } from "../model/naming";
 import { ImportRegistry } from "../ir/imports";
 import { sourceImport } from "./helpers";
 import { ENUMS_PATH, entityDtoPath, entityFilePath, file, PAGINATION_PATH } from "./helpers";
@@ -349,11 +351,45 @@ export class Paginated${entity.name}Dto {
   return file(path, content);
 }
 
+export function emitAttachDto(entity: EntityIR, relation: RelationIR): GeneratedFile {
+  const path = `${entity.moduleDir}/dto/attach-${toKebabCase(relation.name)}.dto.ts`;
+  const registry = new ImportRegistry();
+  registry.add("@nestjs/swagger", "ApiProperty");
+  registry.add("class-validator", "ArrayNotEmpty", "IsArray");
+  const isInt = relation.target.primary.type === "int";
+  registry.add("class-validator", isInt ? "IsInt" : "IsUUID");
+
+  const singleName = pluralize.singular(relation.name);
+  const propName = `${singleName}Ids`;
+  const typeSwagger = isInt ? "Number" : "String";
+  const itemTypeTs = isInt ? "number" : "string";
+  const validator = isInt ? "@IsInt({ each: true })" : "@IsUUID(undefined, { each: true })";
+  const example = isInt ? "[1, 2]" : `["${relation.target.primary.defaultValue ?? "00000000-0000-4000-8000-000000000000"}"]`;
+
+  const content = `${registry.render()}export class Attach${toPascalCase(relation.name)}Dto {
+  @ApiProperty({
+    type: [${typeSwagger}],
+    description: "Array of ${relation.target.name} IDs to attach to ${entity.name}",
+    example: ${example},
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  ${validator}
+  ${propName}: ${itemTypeTs}[];
+}
+`;
+  return file(path, content);
+}
+
 export function emitEntityDtos(ir: ProjectIR, entity: EntityIR): GeneratedFile[] {
+  const manyToManyRelations = entity.relations.filter(
+    (relation) => relation.kind === "many-to-many" && !relation.target.isSystem,
+  );
   return [
     emitCreateDto(ir, entity),
     emitUpdateDto(entity),
     emitQueryDto(ir, entity),
     ...(entity.options.pagination ? [emitPaginatedDto(entity)] : []),
+    ...manyToManyRelations.map((relation) => emitAttachDto(entity, relation)),
   ];
 }

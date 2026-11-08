@@ -1,4 +1,6 @@
+import pluralize from "pluralize";
 import type { EntityIR, GeneratedFile, ProjectIR } from "../../ir/types";
+import { toKebabCase } from "../../model/naming";
 import { entityFilePath, file } from "../helpers";
 import { buildableEntities, entityPath, importPath } from "./common";
 
@@ -18,7 +20,11 @@ function invalidValueFor(_field: EntityIR["fields"][number]): string {
   return "null";
 }
 
-export function emitEntitySpec(ir: ProjectIR, entity: EntityIR): GeneratedFile {
+export function emitEntitySpec(
+  ir: ProjectIR,
+  entity: EntityIR,
+  buildable: Set<string> = buildableEntities(ir),
+): GeneratedFile {
   const path = `test/${entity.singularKebab}.e2e-spec.ts`;
   const endpoint = entityPath(ir, entity);
   const primary = entity.primary.name;
@@ -305,6 +311,152 @@ export function emitEntitySpec(ir: ProjectIR, entity: EntityIR): GeneratedFile {
     }
   }
 
+  const oneToManyDerived = entity.derivedRelations.filter(
+    (derived) =>
+      derived.kind === "one-to-many" &&
+      !derived.source.isSystem &&
+      buildable.has(derived.source.id),
+  );
+
+  for (const derived of oneToManyDerived) {
+    const child = derived.source;
+    const subPath = toKebabCase(derived.name);
+    const childListToken = tokenExpression(ir, child, "list");
+    const childCreateToken = tokenExpression(ir, child, "create");
+
+    lines.push("");
+    lines.push(`  it("manages nested ${derived.name} for ${entity.name}", async () => {`);
+    lines.push(
+      `    const childPayload = await factory.build${child.name}(unique("${child.singularKebab}-nested"));`,
+    );
+    lines.push("    const created = await request(app.getHttpServer())");
+    lines.push(
+      `      .post(\`${endpoint}/\${sample.${primary}}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${childCreateToken}))`);
+    lines.push("      .send(childPayload);");
+    lines.push("    expect(created.status).toBe(201);");
+    lines.push(
+      `    expect(created.body).toHaveProperty(${JSON.stringify(child.primary.name)});`,
+    );
+    lines.push("");
+    lines.push("    const list = await request(app.getHttpServer())");
+    lines.push(
+      `      .get(\`${endpoint}/\${sample.${primary}}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${childListToken}));`);
+    lines.push("    expect(list.status).toBe(200);");
+    lines.push(
+      `    expect(listItems(list.body).some((item) => item[${JSON.stringify(child.primary.name)}] === created.body.${child.primary.name})).toBe(true);`,
+    );
+    lines.push("");
+    lines.push(
+      entity.primary.type === "int"
+        ? "    const missingId = 999999;"
+        : "    const missingId = randomUUID();",
+    );
+    lines.push("    const missing = await request(app.getHttpServer())");
+    lines.push(
+      `      .get(\`${endpoint}/\${missingId}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${childListToken}));`);
+    lines.push("    expect(missing.status).toBe(404);");
+    lines.push("");
+    lines.push("    const missingPost = await request(app.getHttpServer())");
+    lines.push(
+      `      .post(\`${endpoint}/\${missingId}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${childCreateToken}))`);
+    lines.push("      .send(childPayload);");
+    lines.push("    expect(missingPost.status).toBe(404);");
+    lines.push("  });");
+  }
+
+  const manyToManyRelations = entity.relations.filter(
+    (relation) =>
+      relation.kind === "many-to-many" &&
+      !relation.target.isSystem &&
+      buildable.has(relation.target.id),
+  );
+
+  for (const relation of manyToManyRelations) {
+    const target = relation.target;
+    const subPath = toKebabCase(relation.name);
+    const singleName = pluralize.singular(relation.name);
+    const propName = `${singleName}Ids`;
+    const targetCreateToken = tokenExpression(ir, target, "create");
+    const targetListToken = tokenExpression(ir, target, "list");
+
+    lines.push("");
+    lines.push(`  it("attaches, lists and detaches ${relation.name} for ${entity.name}", async () => {`);
+    lines.push(
+      `    const targetItem = await factory.make${target.name}(unique("${target.singularKebab}-nested"), ${targetCreateToken});`,
+    );
+    lines.push("");
+    lines.push("    const attached = await request(app.getHttpServer())");
+    lines.push(
+      `      .post(\`${endpoint}/\${sample.${primary}}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${updateToken}))`);
+    lines.push(
+      `      .send({ ${propName}: [targetItem.${target.primary.name}] });`,
+    );
+    lines.push("    expect(attached.status).toBe(201);");
+    lines.push(
+      `    expect(listItems(attached.body).some((item) => item[${JSON.stringify(target.primary.name)}] === targetItem.${target.primary.name})).toBe(true);`,
+    );
+    lines.push("");
+    lines.push("    const list = await request(app.getHttpServer())");
+    lines.push(
+      `      .get(\`${endpoint}/\${sample.${primary}}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${targetListToken}));`);
+    lines.push("    expect(list.status).toBe(200);");
+    lines.push(
+      `    expect(listItems(list.body).some((item) => item[${JSON.stringify(target.primary.name)}] === targetItem.${target.primary.name})).toBe(true);`,
+    );
+    lines.push("");
+    lines.push("    const detached = await request(app.getHttpServer())");
+    lines.push(
+      `      .delete(\`${endpoint}/\${sample.${primary}}/${subPath}/\${targetItem.${target.primary.name}}\`)`,
+    );
+    lines.push(`      .set(authHeader(${updateToken}));`);
+    lines.push("    expect(detached.status).toBe(204);");
+    lines.push("");
+    lines.push("    const afterDetach = await request(app.getHttpServer())");
+    lines.push(
+      `      .get(\`${endpoint}/\${sample.${primary}}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${targetListToken}));`);
+    lines.push("    expect(afterDetach.status).toBe(200);");
+    lines.push(
+      `    expect(listItems(afterDetach.body).some((item) => item[${JSON.stringify(target.primary.name)}] === targetItem.${target.primary.name})).toBe(false);`,
+    );
+    lines.push("");
+    lines.push(
+      entity.primary.type === "int"
+        ? "    const missingId = 999999;"
+        : "    const missingId = randomUUID();",
+    );
+    lines.push("    const missing = await request(app.getHttpServer())");
+    lines.push(
+      `      .get(\`${endpoint}/\${missingId}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${targetListToken}));`);
+    lines.push("    expect(missing.status).toBe(404);");
+    lines.push("");
+    lines.push("    const missingAttach = await request(app.getHttpServer())");
+    lines.push(
+      `      .post(\`${endpoint}/\${missingId}/${subPath}\`)`,
+    );
+    lines.push(`      .set(authHeader(${updateToken}))`);
+    lines.push(
+      `      .send({ ${propName}: [targetItem.${target.primary.name}] });`,
+    );
+    lines.push("    expect(missingAttach.status).toBe(404);");
+    lines.push("  });");
+  }
+
   lines.push("});");
   lines.push("");
   return file(path, lines.join("\n"), "typescript");
@@ -314,5 +466,5 @@ export function emitEntitySpecs(ir: ProjectIR): GeneratedFile[] {
   const buildable = buildableEntities(ir);
   return ir.entities
     .filter((entity) => !entity.isSystem && buildable.has(entity.id))
-    .map((entity) => emitEntitySpec(ir, entity));
+    .map((entity) => emitEntitySpec(ir, entity, buildable));
 }

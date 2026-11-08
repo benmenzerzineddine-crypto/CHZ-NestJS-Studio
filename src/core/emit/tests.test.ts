@@ -43,6 +43,10 @@ describe("generated e2e specs", () => {
       "?title=",
       "withDeleted=true",
       "restore",
+      "manages nested comments for Post",
+      "attaches, lists and detaches tags for Post",
+      "/api/posts/${sample.id}/comments",
+      "/api/posts/${sample.id}/tags",
     ]) {
       expect(spec.content).toContain(expected);
     }

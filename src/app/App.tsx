@@ -151,6 +151,9 @@ export default function App() {
       if (!useProjectStore.getState().project) {
         useProjectStore.getState().openProject(blogJson as any);
       }
+      if (!useGenerateStore.getState().result) {
+        void useGenerateStore.getState().run({ silent: true });
+      }
       if (screenParam) {
         useUiStore.getState().setScreen(screenParam as any);
       }

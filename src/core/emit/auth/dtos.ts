@@ -9,6 +9,7 @@ import {
   AUTH_DTO_REGISTER_PATH,
   AUTH_DTO_RESEND_VERIFICATION_PATH,
   AUTH_DTO_RESET_PASSWORD_PATH,
+  AUTH_DTO_SESSION_PATH,
   AUTH_DTO_VERIFY_EMAIL_PATH,
   file,
 } from "../helpers";
@@ -192,3 +193,30 @@ export function emitTwoFactorDisableDto(): GeneratedFile {
 `,
   );
 }
+
+export function emitSessionDto(): GeneratedFile {
+  const registry = new ImportRegistry();
+  registry.add("@nestjs/swagger", "ApiProperty", "ApiPropertyOptional");
+
+  return file(
+    AUTH_DTO_SESSION_PATH,
+    `${registry.render()}export class SessionDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  userAgent?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  ipAddress?: string | null;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  expiresAt: Date;
+}
+`,
+  );
+}
+

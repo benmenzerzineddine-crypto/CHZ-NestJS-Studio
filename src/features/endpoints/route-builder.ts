@@ -1,6 +1,7 @@
 import { isSystemEntity } from "@/core/model/defaults";
 import { toKebabCase, toRestPath } from "@/core/model/naming";
 import { buildDerivedInverses } from "@/core/model/normalize";
+import pluralize from "pluralize";
 import type { Project } from "@/core/model/schema";
 import {
   OPERATION_METHODS,
@@ -71,6 +72,38 @@ export function buildEntityRouteGroups(
         });
       }
 
+      const manyToManyRelations = entity.relations.filter((r) => r.kind === "many-to-many");
+      for (const rel of manyToManyRelations) {
+        const target = project.entities.find((candidate) => candidate.id === rel.targetEntityId);
+        if (!target || isSystemEntity(target)) continue;
+        const subPath = toKebabCase(rel.name);
+        const singleName = pluralize.singular(rel.name);
+        const targetParamName = `${singleName}Id`;
+
+        routes.push({
+          method: "GET",
+          path: `${basePath}/:id/${subPath}`,
+          access: target.access.list.level,
+          note: `List ${rel.name} for ${entity.name}`,
+          throttle: entityThrottleStr,
+          cache: entityCacheStr,
+        });
+        routes.push({
+          method: "POST",
+          path: `${basePath}/:id/${subPath}`,
+          access: entity.access.update.level,
+          note: `Attach ${rel.name} to ${entity.name}`,
+          throttle: entityThrottleStr,
+        });
+        routes.push({
+          method: "DELETE",
+          path: `${basePath}/:id/${subPath}/:${targetParamName}`,
+          access: entity.access.update.level,
+          note: `Detach ${target.name} from ${entity.name}`,
+          throttle: entityThrottleStr,
+        });
+      }
+
       for (const ep of entity.customEndpoints ?? []) {
         const subPath = ep.path.startsWith("/") ? ep.path : `/${ep.path}`;
         const customThrottle = ep.skipThrottle
@@ -137,6 +170,29 @@ export function buildSystemRoutes(project: Project): RouteEntry[] {
       path: `${prefix}/auth/refresh`,
       access: "public",
     });
+  }
+
+  if (project.auth.sessionManagement) {
+    routes.push(
+      {
+        method: "GET",
+        path: `${prefix}/auth/sessions`,
+        access: "authenticated",
+        note: "List active user sessions",
+      },
+      {
+        method: "DELETE",
+        path: `${prefix}/auth/sessions/:id`,
+        access: "authenticated",
+        note: "Revoke a specific session",
+      },
+      {
+        method: "DELETE",
+        path: `${prefix}/auth/sessions`,
+        access: "authenticated",
+        note: "Revoke all user sessions",
+      },
+    );
   }
 
   if (project.auth.passwordReset) {

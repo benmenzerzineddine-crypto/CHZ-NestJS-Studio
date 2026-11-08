@@ -35,6 +35,16 @@ export function emitRefreshTokenEntity(ir: ProjectIR): GeneratedFile {
   const idLength = ir.driver === "postgres" ? "" : ", length: 36";
   const dateType = ir.driver === "postgres" ? "timestamptz" : "datetime";
 
+  const sessionColumns = ir.auth.sessionManagement
+    ? `
+  @Column({ name: "user_agent", type: "varchar", length: 500, nullable: true })
+  userAgent?: string | null;
+
+  @Column({ name: "ip_address", type: "varchar", length: 45, nullable: true })
+  ipAddress?: string | null;
+`
+    : "";
+
   const content = `${registry.render()}@Entity("refresh_tokens")
 export class RefreshToken {
   @PrimaryGeneratedColumn("uuid", { name: "id" })
@@ -56,8 +66,7 @@ export class RefreshToken {
   expiresAt: Date;
 
   @Column({ name: "revoked_at", type: "${dateType}", nullable: true })
-  revokedAt?: Date | null;
-
+  revokedAt?: Date | null;${sessionColumns}
   @CreateDateColumn({ name: "created_at", type: "${dateType}" })
   createdAt: Date;
 }

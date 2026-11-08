@@ -16,6 +16,7 @@ import {
   type ProjectSummary,
 } from "@/lib/projects";
 import { errorMessage } from "@/lib/tauri";
+import { clearGeneration, useGenerateStore } from "@/store/generate.store";
 import { useProjectStore } from "@/store/project.store";
 import { useUiStore } from "@/store/ui.store";
 import { ImportProjectDialog } from "./ImportProjectDialog";
@@ -40,6 +41,7 @@ export function ProjectsScreen() {
     try {
       await saveProject(imported);
       openProject(imported);
+      void useGenerateStore.getState().run({ silent: true });
       setScreen("settings");
       pushToast({
         kind: "success",
@@ -82,6 +84,9 @@ export function ProjectsScreen() {
     try {
       const project = await loadProject(summary.id);
       openProject(project);
+      if (!useGenerateStore.getState().result) {
+        void useGenerateStore.getState().run({ silent: true });
+      }
       setScreen("settings");
     } catch (error) {
       pushToast({
@@ -99,6 +104,7 @@ export function ProjectsScreen() {
     const project = createProject(input.name, input.driver, input.authEnabled);
     await saveProject(project);
     openProject(project);
+    void useGenerateStore.getState().run({ silent: true });
     setScreen("settings");
     pushToast({
       kind: "success",
@@ -112,6 +118,7 @@ export function ProjectsScreen() {
 
     try {
       await deleteProject(pendingDelete.id);
+      clearGeneration(pendingDelete.id);
       setPendingDelete(null);
       await refresh();
       pushToast({ kind: "success", title: "Project deleted" });

@@ -6,6 +6,7 @@ import {
   emitRegisterDto,
   emitResendVerificationDto,
   emitResetPasswordDto,
+  emitSessionDto,
   emitTwoFactorDisableDto,
   emitTwoFactorEnableDto,
   emitTwoFactorVerifyDto,
@@ -34,6 +35,7 @@ export {
   emitRequireVerifiedEmailDecorator,
   emitResendVerificationDto,
   emitResetPasswordDto,
+  emitSessionDto,
   emitTwoFactorDisableDto,
   emitTwoFactorEnableDto,
   emitTwoFactorVerifyDto,
@@ -62,6 +64,7 @@ export function emitAuth(ir: ProjectIR): GeneratedFile[] {
           emitTwoFactorDisableDto(),
         ]
       : []),
+    ...(ir.auth.sessionManagement ? [emitSessionDto()] : []),
     ...(ir.auth.oauth?.google ? [emitGoogleStrategy(ir)] : []),
     ...(ir.auth.oauth?.github ? [emitGithubStrategy(ir)] : []),
     emitAuthService(ir),

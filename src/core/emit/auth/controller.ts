@@ -41,6 +41,9 @@ export function emitAuthController(ir: ProjectIR): GeneratedFile {
     registry.add(sourceImport(AUTH_CONTROLLER_PATH, AUTH_DTO_VERIFY_EMAIL_PATH), "VerifyEmailDto");
     registry.add(sourceImport(AUTH_CONTROLLER_PATH, AUTH_DTO_RESEND_VERIFICATION_PATH), "ResendVerificationDto");
   }
+  if (ir.auth.sessionManagement) {
+    registry.add("@nestjs/common", "Delete", "Headers", "Ip", "Param");
+  }
   if (ir.auth.twoFactor) {
     registry.add(sourceImport(AUTH_CONTROLLER_PATH, AUTH_DTO_2FA_ENABLE_PATH), "TwoFactorEnableDto");
     registry.add(sourceImport(AUTH_CONTROLLER_PATH, AUTH_DTO_2FA_VERIFY_PATH), "TwoFactorVerifyDto");
@@ -67,8 +70,13 @@ export function emitAuthController(ir: ProjectIR): GeneratedFile {
     lines.push("  @Public()");
     lines.push("  @Throttle({ default: { limit: 5, ttl: 60_000 } })");
     lines.push("  @Post('register')");
-    lines.push("  register(@Body() dto: RegisterDto) {");
-    lines.push("    return this.authService.register(dto);");
+    if (ir.auth.sessionManagement) {
+      lines.push("  register(@Body() dto: RegisterDto, @Headers('user-agent') userAgent?: string, @Ip() ipAddress?: string) {");
+      lines.push("    return this.authService.register(dto, userAgent, ipAddress);");
+    } else {
+      lines.push("  register(@Body() dto: RegisterDto) {");
+      lines.push("    return this.authService.register(dto);");
+    }
     lines.push("  }");
     lines.push("");
   }
@@ -77,8 +85,13 @@ export function emitAuthController(ir: ProjectIR): GeneratedFile {
   lines.push("  @Throttle({ default: { limit: 5, ttl: 60_000 } })");
   lines.push("  @Post('login')");
   lines.push("  @HttpCode(200)");
-  lines.push("  login(@Body() dto: LoginDto) {");
-  lines.push("    return this.authService.login(dto);");
+  if (ir.auth.sessionManagement) {
+    lines.push("  login(@Body() dto: LoginDto, @Headers('user-agent') userAgent?: string, @Ip() ipAddress?: string) {");
+    lines.push("    return this.authService.login(dto, userAgent, ipAddress);");
+  } else {
+    lines.push("  login(@Body() dto: LoginDto) {");
+    lines.push("    return this.authService.login(dto);");
+  }
   lines.push("  }");
 
   if (ir.auth.refreshTokens) {
@@ -87,8 +100,13 @@ export function emitAuthController(ir: ProjectIR): GeneratedFile {
     lines.push("  @Throttle({ default: { limit: 5, ttl: 60_000 } })");
     lines.push("  @Post('refresh')");
     lines.push("  @HttpCode(200)");
-    lines.push("  refresh(@Body() dto: RefreshTokenDto) {");
-    lines.push("    return this.authService.refresh(dto);");
+    if (ir.auth.sessionManagement) {
+      lines.push("  refresh(@Body() dto: RefreshTokenDto, @Headers('user-agent') userAgent?: string, @Ip() ipAddress?: string) {");
+      lines.push("    return this.authService.refresh(dto, userAgent, ipAddress);");
+    } else {
+      lines.push("  refresh(@Body() dto: RefreshTokenDto) {");
+      lines.push("    return this.authService.refresh(dto);");
+    }
     lines.push("  }");
   }
 
@@ -112,6 +130,29 @@ export function emitAuthController(ir: ProjectIR): GeneratedFile {
   lines.push("  me(@CurrentUser() user: AuthUser) {");
   lines.push("    return this.authService.me(user.id);");
   lines.push("  }");
+
+  if (ir.auth.sessionManagement) {
+    lines.push("");
+    lines.push("  @ApiBearerAuth()");
+    lines.push("  @Get('sessions')");
+    lines.push("  listSessions(@CurrentUser() user: AuthUser) {");
+    lines.push("    return this.authService.listSessions(user.id);");
+    lines.push("  }");
+    lines.push("");
+    lines.push("  @ApiBearerAuth()");
+    lines.push("  @Delete('sessions/:id')");
+    lines.push("  @HttpCode(204)");
+    lines.push("  async revokeSession(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<void> {");
+    lines.push("    await this.authService.revokeSession(user.id, id);");
+    lines.push("  }");
+    lines.push("");
+    lines.push("  @ApiBearerAuth()");
+    lines.push("  @Delete('sessions')");
+    lines.push("  @HttpCode(204)");
+    lines.push("  async revokeAllSessions(@CurrentUser() user: AuthUser): Promise<void> {");
+    lines.push("    await this.authService.revokeAllSessions(user.id);");
+    lines.push("  }");
+  }
 
   if (ir.auth.passwordReset) {
     lines.push("");

@@ -166,8 +166,16 @@ export const authConfigSchema = z
       github: false,
     }),
     twoFactor: z.boolean().default(false),
+    sessionManagement: z.boolean().default(false),
   })
   .superRefine((auth, ctx) => {
+    if (auth.sessionManagement && !auth.refreshTokens) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["sessionManagement"],
+        message: "Session management requires refresh tokens to be enabled",
+      });
+    }
     const seen = new Set<string>();
     for (const [index, role] of auth.roles.entries()) {
       if (seen.has(role.key)) {

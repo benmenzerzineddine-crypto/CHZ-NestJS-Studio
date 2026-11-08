@@ -1981,6 +1981,24 @@ export class UpdateCommentDto extends PartialType(CreateCommentDto) {}
     "path": "src/modules/comment/dto/update-comment.dto.ts",
   },
   {
+    "content": "import { ApiProperty } from "@nestjs/swagger";
+import { ArrayNotEmpty, IsArray, IsUUID } from "class-validator";
+
+export class AttachTagsDto {
+  @ApiProperty({
+    type: [String],
+    description: "Array of Tag IDs to attach to Post",
+    example: ["00000000-0000-4000-8000-000000000000"],
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID(undefined, { each: true })
+  tagIds: string[];
+}
+",
+    "path": "src/modules/post/dto/attach-tags.dto.ts",
+  },
+  {
     "content": "import { PostStatus } from "../../../common/enums";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
@@ -2150,6 +2168,8 @@ import { Comment as CommentEntity } from "../comment/comment.entity";
 import { CreateCommentDto } from "../comment/dto/create-comment.dto";
 import { PaginatedCommentDto } from "../comment/dto/paginated-comment.dto";
 import { QueryCommentDto } from "../comment/dto/query-comment.dto";
+import { Tag as TagEntity } from "../tag/tag.entity";
+import { AttachTagsDto } from "./dto/attach-tags.dto";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { PaginatedPostDto } from "./dto/paginated-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
@@ -2296,6 +2316,49 @@ export class PostController {
   ) {
     return this.service.createComment(id, dto, user);
   }
+
+  @ApiOperation({ summary: "List tags for Post" })
+  @ApiOkResponse({ description: "tags list for Post", type: [TagEntity] })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @Public()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Get(":id/tags")
+  findTags(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
+    return this.service.findTags(id, user);
+  }
+
+  @ApiOperation({ summary: "Attach tags to Post" })
+  @ApiCreatedResponse({ description: "tags attached to Post", type: [TagEntity] })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBadRequestResponse({ description: "Validation failed" })
+  @ApiBearerAuth()
+  // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Post(":id/tags")
+  attachTags(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: AttachTagsDto,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.service.attachTags(id, dto, user);
+  }
+
+  @ApiOperation({ summary: "Detach Tag from Post" })
+  @ApiNoContentResponse({ description: "Tag detached from Post" })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBearerAuth()
+  // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @ApiParam({ name: "tagId", type: String, description: "Unique Tag identifier" })
+  @Delete(":id/tags/:tagId")
+  @HttpCode(204)
+  async detachTag(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("tagId", ParseUUIDPipe) tagId: string,
+    @CurrentUser() user?: AuthUser,
+  ): Promise<void> {
+    await this.service.detachTag(id, tagId, user);
+  }
 }
 ",
     "path": "src/modules/post/post.controller.ts",
@@ -2414,6 +2477,7 @@ import { Comment } from "../comment/comment.entity";
 import { CreateCommentDto } from "../comment/dto/create-comment.dto";
 import { QueryCommentDto } from "../comment/dto/query-comment.dto";
 import { Tag } from "../tag/tag.entity";
+import { AttachTagsDto } from "./dto/attach-tags.dto";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
 import { UpdatePostDto } from "./dto/update-post.dto";
@@ -2607,6 +2671,25 @@ export class PostService {
     if (user) entity.ownerId = user.id;
     const saved = await repository.save(entity);
     return saved;
+  }
+
+  async findTags(id: string, user?: AuthUser): Promise<Tag[]> {
+    await this.findOne(id, user);
+    return this.repository.createQueryBuilder().relation("tags").of(id).loadMany();
+  }
+
+  async attachTags(id: string, dto: AttachTagsDto, user?: AuthUser): Promise<Tag[]> {
+    await this.findOne(id, user);
+    const ids = dto.tagIds ?? (dto as any).tagsIds ?? (dto as any).ids;
+    if (ids && ids.length > 0) {
+      await this.repository.createQueryBuilder().relation("tags").of(id).add(ids);
+    }
+    return this.findTags(id, user);
+  }
+
+  async detachTag(id: string, tagId: string, user?: AuthUser): Promise<void> {
+    await this.findOne(id, user);
+    await this.repository.createQueryBuilder().relation("tags").of(id).remove(tagId);
   }
 }
 ",
@@ -4158,6 +4241,74 @@ describe("Post CRUD", () => {
       .get(\`/api/posts/\${missingId}\`)
       .set(authHeader(null));
     expect(response.status).toBe(404);
+  });
+
+  it("manages nested comments for Post", async () => {
+    const childPayload = await factory.buildComment(unique("comment-nested"));
+    const created = await request(app.getHttpServer())
+      .post(\`/api/posts/\${sample.id}/comments\`)
+      .set(authHeader(creatorToken))
+      .send(childPayload);
+    expect(created.status).toBe(201);
+    expect(created.body).toHaveProperty("id");
+
+    const list = await request(app.getHttpServer())
+      .get(\`/api/posts/\${sample.id}/comments\`)
+      .set(authHeader(creatorToken));
+    expect(list.status).toBe(200);
+    expect(listItems(list.body).some((item) => item["id"] === created.body.id)).toBe(true);
+
+    const missingId = randomUUID();
+    const missing = await request(app.getHttpServer())
+      .get(\`/api/posts/\${missingId}/comments\`)
+      .set(authHeader(creatorToken));
+    expect(missing.status).toBe(404);
+
+    const missingPost = await request(app.getHttpServer())
+      .post(\`/api/posts/\${missingId}/comments\`)
+      .set(authHeader(creatorToken))
+      .send(childPayload);
+    expect(missingPost.status).toBe(404);
+  });
+
+  it("attaches, lists and detaches tags for Post", async () => {
+    const targetItem = await factory.makeTag(unique("tag-nested"), creatorToken);
+
+    const attached = await request(app.getHttpServer())
+      .post(\`/api/posts/\${sample.id}/tags\`)
+      .set(authHeader(ownerToken))
+      .send({ tagIds: [targetItem.id] });
+    expect(attached.status).toBe(201);
+    expect(listItems(attached.body).some((item) => item["id"] === targetItem.id)).toBe(true);
+
+    const list = await request(app.getHttpServer())
+      .get(\`/api/posts/\${sample.id}/tags\`)
+      .set(authHeader(null));
+    expect(list.status).toBe(200);
+    expect(listItems(list.body).some((item) => item["id"] === targetItem.id)).toBe(true);
+
+    const detached = await request(app.getHttpServer())
+      .delete(\`/api/posts/\${sample.id}/tags/\${targetItem.id}\`)
+      .set(authHeader(ownerToken));
+    expect(detached.status).toBe(204);
+
+    const afterDetach = await request(app.getHttpServer())
+      .get(\`/api/posts/\${sample.id}/tags\`)
+      .set(authHeader(null));
+    expect(afterDetach.status).toBe(200);
+    expect(listItems(afterDetach.body).some((item) => item["id"] === targetItem.id)).toBe(false);
+
+    const missingId = randomUUID();
+    const missing = await request(app.getHttpServer())
+      .get(\`/api/posts/\${missingId}/tags\`)
+      .set(authHeader(null));
+    expect(missing.status).toBe(404);
+
+    const missingAttach = await request(app.getHttpServer())
+      .post(\`/api/posts/\${missingId}/tags\`)
+      .set(authHeader(ownerToken))
+      .send({ tagIds: [targetItem.id] });
+    expect(missingAttach.status).toBe(404);
   });
 });
 ",
@@ -6359,6 +6510,24 @@ export class UpdateCommentDto extends PartialType(CreateCommentDto) {}
     "path": "src/modules/comment/dto/update-comment.dto.ts",
   },
   {
+    "content": "import { ApiProperty } from "@nestjs/swagger";
+import { ArrayNotEmpty, IsArray, IsUUID } from "class-validator";
+
+export class AttachTagsDto {
+  @ApiProperty({
+    type: [String],
+    description: "Array of Tag IDs to attach to Post",
+    example: ["00000000-0000-4000-8000-000000000000"],
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID(undefined, { each: true })
+  tagIds: string[];
+}
+",
+    "path": "src/modules/post/dto/attach-tags.dto.ts",
+  },
+  {
     "content": "import { PostStatus } from "../../../common/enums";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
@@ -6528,6 +6697,8 @@ import { Comment as CommentEntity } from "../comment/comment.entity";
 import { CreateCommentDto } from "../comment/dto/create-comment.dto";
 import { PaginatedCommentDto } from "../comment/dto/paginated-comment.dto";
 import { QueryCommentDto } from "../comment/dto/query-comment.dto";
+import { Tag as TagEntity } from "../tag/tag.entity";
+import { AttachTagsDto } from "./dto/attach-tags.dto";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { PaginatedPostDto } from "./dto/paginated-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
@@ -6674,6 +6845,49 @@ export class PostController {
   ) {
     return this.service.createComment(id, dto, user);
   }
+
+  @ApiOperation({ summary: "List tags for Post" })
+  @ApiOkResponse({ description: "tags list for Post", type: [TagEntity] })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @Public()
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Get(":id/tags")
+  findTags(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
+    return this.service.findTags(id, user);
+  }
+
+  @ApiOperation({ summary: "Attach tags to Post" })
+  @ApiCreatedResponse({ description: "tags attached to Post", type: [TagEntity] })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBadRequestResponse({ description: "Validation failed" })
+  @ApiBearerAuth()
+  // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @Post(":id/tags")
+  attachTags(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: AttachTagsDto,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.service.attachTags(id, dto, user);
+  }
+
+  @ApiOperation({ summary: "Detach Tag from Post" })
+  @ApiNoContentResponse({ description: "Tag detached from Post" })
+  @ApiNotFoundResponse({ description: "Post not found" })
+  @ApiBearerAuth()
+  // Admin bypass and owner scoping are enforced by the service query.
+  @ApiParam({ name: "id", type: String, description: "Unique Post identifier" })
+  @ApiParam({ name: "tagId", type: String, description: "Unique Tag identifier" })
+  @Delete(":id/tags/:tagId")
+  @HttpCode(204)
+  async detachTag(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("tagId", ParseUUIDPipe) tagId: string,
+    @CurrentUser() user?: AuthUser,
+  ): Promise<void> {
+    await this.service.detachTag(id, tagId, user);
+  }
 }
 ",
     "path": "src/modules/post/post.controller.ts",
@@ -6786,6 +7000,7 @@ import { Comment } from "../comment/comment.entity";
 import { CreateCommentDto } from "../comment/dto/create-comment.dto";
 import { QueryCommentDto } from "../comment/dto/query-comment.dto";
 import { Tag } from "../tag/tag.entity";
+import { AttachTagsDto } from "./dto/attach-tags.dto";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { QueryPostDto } from "./dto/query-post.dto";
 import { UpdatePostDto } from "./dto/update-post.dto";
@@ -6979,6 +7194,25 @@ export class PostService {
     if (user) entity.ownerId = user.id;
     const saved = await repository.save(entity);
     return saved;
+  }
+
+  async findTags(id: string, user?: AuthUser): Promise<Tag[]> {
+    await this.findOne(id, user);
+    return this.repository.createQueryBuilder().relation("tags").of(id).loadMany();
+  }
+
+  async attachTags(id: string, dto: AttachTagsDto, user?: AuthUser): Promise<Tag[]> {
+    await this.findOne(id, user);
+    const ids = dto.tagIds ?? (dto as any).tagsIds ?? (dto as any).ids;
+    if (ids && ids.length > 0) {
+      await this.repository.createQueryBuilder().relation("tags").of(id).add(ids);
+    }
+    return this.findTags(id, user);
+  }
+
+  async detachTag(id: string, tagId: string, user?: AuthUser): Promise<void> {
+    await this.findOne(id, user);
+    await this.repository.createQueryBuilder().relation("tags").of(id).remove(tagId);
   }
 }
 ",
@@ -8530,6 +8764,74 @@ describe("Post CRUD", () => {
       .get(\`/api/posts/\${missingId}\`)
       .set(authHeader(null));
     expect(response.status).toBe(404);
+  });
+
+  it("manages nested comments for Post", async () => {
+    const childPayload = await factory.buildComment(unique("comment-nested"));
+    const created = await request(app.getHttpServer())
+      .post(\`/api/posts/\${sample.id}/comments\`)
+      .set(authHeader(creatorToken))
+      .send(childPayload);
+    expect(created.status).toBe(201);
+    expect(created.body).toHaveProperty("id");
+
+    const list = await request(app.getHttpServer())
+      .get(\`/api/posts/\${sample.id}/comments\`)
+      .set(authHeader(creatorToken));
+    expect(list.status).toBe(200);
+    expect(listItems(list.body).some((item) => item["id"] === created.body.id)).toBe(true);
+
+    const missingId = randomUUID();
+    const missing = await request(app.getHttpServer())
+      .get(\`/api/posts/\${missingId}/comments\`)
+      .set(authHeader(creatorToken));
+    expect(missing.status).toBe(404);
+
+    const missingPost = await request(app.getHttpServer())
+      .post(\`/api/posts/\${missingId}/comments\`)
+      .set(authHeader(creatorToken))
+      .send(childPayload);
+    expect(missingPost.status).toBe(404);
+  });
+
+  it("attaches, lists and detaches tags for Post", async () => {
+    const targetItem = await factory.makeTag(unique("tag-nested"), creatorToken);
+
+    const attached = await request(app.getHttpServer())
+      .post(\`/api/posts/\${sample.id}/tags\`)
+      .set(authHeader(ownerToken))
+      .send({ tagIds: [targetItem.id] });
+    expect(attached.status).toBe(201);
+    expect(listItems(attached.body).some((item) => item["id"] === targetItem.id)).toBe(true);
+
+    const list = await request(app.getHttpServer())
+      .get(\`/api/posts/\${sample.id}/tags\`)
+      .set(authHeader(null));
+    expect(list.status).toBe(200);
+    expect(listItems(list.body).some((item) => item["id"] === targetItem.id)).toBe(true);
+
+    const detached = await request(app.getHttpServer())
+      .delete(\`/api/posts/\${sample.id}/tags/\${targetItem.id}\`)
+      .set(authHeader(ownerToken));
+    expect(detached.status).toBe(204);
+
+    const afterDetach = await request(app.getHttpServer())
+      .get(\`/api/posts/\${sample.id}/tags\`)
+      .set(authHeader(null));
+    expect(afterDetach.status).toBe(200);
+    expect(listItems(afterDetach.body).some((item) => item["id"] === targetItem.id)).toBe(false);
+
+    const missingId = randomUUID();
+    const missing = await request(app.getHttpServer())
+      .get(\`/api/posts/\${missingId}/tags\`)
+      .set(authHeader(null));
+    expect(missing.status).toBe(404);
+
+    const missingAttach = await request(app.getHttpServer())
+      .post(\`/api/posts/\${missingId}/tags\`)
+      .set(authHeader(ownerToken))
+      .send({ tagIds: [targetItem.id] });
+    expect(missingAttach.status).toBe(404);
   });
 });
 ",

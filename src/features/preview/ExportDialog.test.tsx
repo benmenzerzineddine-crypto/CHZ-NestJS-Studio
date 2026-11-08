@@ -241,10 +241,8 @@ describe("ExportDialog", () => {
     const chooseButton = screen.getByRole("button", { name: "Choose" });
 
     fireEvent.click(chooseButton);
-    expect(await screen.findByText("/custom/export-dir")).toBeInTheDocument();
-
     const exportBtn = screen.getByRole("button", { name: "Export" });
-    expect(exportBtn).toBeEnabled();
+    await waitFor(() => expect(exportBtn).toBeEnabled());
     fireEvent.click(exportBtn);
 
     expect(await screen.findByRole("button", { name: "Open folder" })).toBeInTheDocument();

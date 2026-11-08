@@ -109,6 +109,7 @@ export function defaultAuth(enabled = true): AuthConfig {
       github: false,
     },
     twoFactor: false,
+    sessionManagement: false,
   };
 }
 

@@ -23,6 +23,104 @@ export interface ExportRecord {
   path: string;
 }
 
+export interface PersistedGeneration {
+  projectId: string;
+  revision: number | null;
+  projectSnapshot: Project | null;
+  result: GenerateResult | null;
+  previousResult: GenerateResult | null;
+  selectedPath?: string;
+  exportRecord?: ExportRecord;
+  updatedAt?: string;
+}
+
+const GENERATION_STORAGE_PREFIX = "chz-nest:generation:";
+
+function pruneOldGenerations(currentProjectId: string): void {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    const entries: { key: string; updatedAt: string }[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (
+        key &&
+        key.startsWith(GENERATION_STORAGE_PREFIX) &&
+        key !== `${GENERATION_STORAGE_PREFIX}${currentProjectId}`
+      ) {
+        try {
+          const item = window.localStorage.getItem(key);
+          const parsed = item ? (JSON.parse(item) as Partial<PersistedGeneration>) : null;
+          entries.push({ key, updatedAt: parsed?.updatedAt ?? "" });
+        } catch {
+          entries.push({ key, updatedAt: "" });
+        }
+      }
+    }
+    entries.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+    if (entries.length > 0 && entries[0]) {
+      window.localStorage.removeItem(entries[0].key);
+    }
+  } catch {
+    // Ignore storage errors safely
+  }
+}
+
+export function saveGeneration(data: PersistedGeneration): void {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    const key = `${GENERATION_STORAGE_PREFIX}${data.projectId}`;
+    const payload: PersistedGeneration = {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    const serialized = JSON.stringify(payload);
+    try {
+      window.localStorage.setItem(key, serialized);
+    } catch {
+      pruneOldGenerations(data.projectId);
+      try {
+        window.localStorage.setItem(key, serialized);
+      } catch {
+        if (payload.previousResult) {
+          window.localStorage.setItem(
+            key,
+            JSON.stringify({ ...payload, previousResult: null }),
+          );
+        }
+      }
+    }
+  } catch {
+    // Ignore storage errors safely
+  }
+}
+
+export function loadGeneration(projectId: string): PersistedGeneration | null {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const key = `${GENERATION_STORAGE_PREFIX}${projectId}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedGeneration;
+    if (parsed.projectId !== projectId) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearGeneration(projectId: string): void {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.removeItem(`${GENERATION_STORAGE_PREFIX}${projectId}`);
+  } catch {
+    // Ignore
+  }
+}
+
+export interface RunGenerateOptions {
+  silent?: boolean;
+}
+
 interface GenerateStore {
   status: GenerateStatus;
   projectId: string | null;
@@ -35,7 +133,8 @@ interface GenerateStore {
   selectedByProject: Record<string, string>;
   exportedByProject: Record<string, ExportRecord>;
   error: string | null;
-  run: () => Promise<void>;
+  run: (options?: RunGenerateOptions) => Promise<void>;
+  loadForProject: (projectId: string) => boolean;
   setViewMode: (mode: ViewMode) => void;
   getFileDiff: (path: string) => FileDiffInfo | null;
   getFileDiffStatus: (path: string) => "added" | "modified" | "unchanged" | null;
@@ -61,7 +160,7 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
   exportedByProject: {},
   error: null,
 
-  run: async () => {
+  run: async (options?: RunGenerateOptions) => {
     const project = useProjectStore.getState().project;
     if (!project) return;
     if (get().status === "running") return;
@@ -103,6 +202,16 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
             ? state.selectedByProject
             : { ...state.selectedByProject, [project.id]: nextSelected },
       }));
+
+      saveGeneration({
+        projectId: project.id,
+        revision,
+        projectSnapshot: project,
+        result,
+        previousResult,
+        selectedPath: nextSelected,
+        exportRecord: get().exportedByProject[project.id],
+      });
     };
 
     try {
@@ -112,21 +221,25 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
       applyResult(preview);
       const errors = preview.issues.filter((issue) => issue.severity === "error");
       if (errors.length > 0 || preview.files.length === 0) {
-        useUiStore.getState().pushToast({
-          kind: "error",
-          title: "Could not generate the project",
-          message: errors[0]?.message ?? "No files were generated.",
-          detail: errors.map((issue) => `${issue.code}: ${issue.message}`).join("\n"),
-        });
+        if (!options?.silent) {
+          useUiStore.getState().pushToast({
+            kind: "error",
+            title: "Could not generate the project",
+            message: errors[0]?.message ?? "No files were generated.",
+            detail: errors.map((issue) => `${issue.code}: ${issue.message}`).join("\n"),
+          });
+        }
         return;
       }
 
       set({ formatting: true });
-      useUiStore.getState().pushToast({
-        kind: "success",
-        title: "Preview ready",
-        message: `${preview.stats.fileCount} files generated; formatting in the background.`,
-      });
+      if (!options?.silent) {
+        useUiStore.getState().pushToast({
+          kind: "success",
+          title: "Preview ready",
+          message: `${preview.stats.fileCount} files generated; formatting in the background.`,
+        });
+      }
 
       try {
         const formatted = await generateProject(project, { format: true });
@@ -140,12 +253,14 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
       } catch (formatError) {
         if (token !== runToken) return;
         set({ formatting: false });
-        useUiStore.getState().pushToast({
-          kind: "warning",
-          title: "Preview is unformatted",
-          message: "Formatting failed; export will use the unformatted preview.",
-          detail: errorMessage(formatError),
-        });
+        if (!options?.silent) {
+          useUiStore.getState().pushToast({
+            kind: "warning",
+            title: "Preview is unformatted",
+            message: "Formatting failed; export will use the unformatted preview.",
+            detail: errorMessage(formatError),
+          });
+        }
       }
     } catch (error) {
       if (token !== runToken) return;
@@ -159,13 +274,54 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
         formatting: false,
         error: message,
       });
-      useUiStore.getState().pushToast({
-        kind: "error",
-        title: "Generation failed",
-        message,
-        detail: message,
+      if (!options?.silent) {
+        useUiStore.getState().pushToast({
+          kind: "error",
+          title: "Generation failed",
+          message,
+          detail: message,
+        });
+      }
+    }
+  },
+
+  loadForProject: (projectId: string) => {
+    if (get().status === "running" && get().projectId === projectId) {
+      return false;
+    }
+    const cached = loadGeneration(projectId);
+    if (cached && cached.result) {
+      set((state) => ({
+        status: "ready",
+        projectId: cached.projectId,
+        revision: cached.revision,
+        projectSnapshot: cached.projectSnapshot,
+        result: cached.result,
+        previousResult: cached.previousResult,
+        selectedByProject: cached.selectedPath
+          ? { ...state.selectedByProject, [projectId]: cached.selectedPath }
+          : state.selectedByProject,
+        exportedByProject: cached.exportRecord
+          ? { ...state.exportedByProject, [projectId]: cached.exportRecord }
+          : state.exportedByProject,
+        formatting: false,
+        error: null,
+      }));
+      return true;
+    }
+    if (get().projectId !== projectId) {
+      set({
+        status: "idle",
+        projectId,
+        revision: null,
+        projectSnapshot: null,
+        result: null,
+        previousResult: null,
+        formatting: false,
+        error: null,
       });
     }
+    return false;
   },
 
   setViewMode: (mode) => {
@@ -191,12 +347,26 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
     set((state) => ({
       selectedByProject: { ...state.selectedByProject, [projectId]: path },
     }));
+    const cached = loadGeneration(projectId);
+    if (cached) {
+      saveGeneration({
+        ...cached,
+        selectedPath: path,
+      });
+    }
   },
 
   markExported: (projectId, revision, path) => {
     set((state) => ({
       exportedByProject: { ...state.exportedByProject, [projectId]: { revision, path } },
     }));
+    const cached = loadGeneration(projectId);
+    if (cached) {
+      saveGeneration({
+        ...cached,
+        exportRecord: { revision, path },
+      });
+    }
   },
 
   reset: () => {
@@ -232,3 +402,18 @@ export const useGenerateStore = create<GenerateStore>()((set, get) => ({
     URL.revokeObjectURL(url);
   },
 }));
+
+useProjectStore.subscribe((state, prevState) => {
+  if (state.project?.id !== prevState.project?.id) {
+    if (state.project) {
+      useGenerateStore.getState().loadForProject(state.project.id);
+    } else {
+      useGenerateStore.getState().reset();
+    }
+  }
+});
+
+const activeProject = useProjectStore.getState().project;
+if (activeProject) {
+  useGenerateStore.getState().loadForProject(activeProject.id);
+}

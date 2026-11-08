@@ -56,6 +56,12 @@ function usesPublic(entity: EntityIR, ir: ProjectIR): boolean {
         d.kind === "one-to-many" &&
         !d.source.isSystem &&
         (d.source.access.list.level === "public" || d.source.access.create.level === "public"),
+    ) ||
+    entity.relations.some(
+      (r) =>
+        r.kind === "many-to-many" &&
+        !r.target.isSystem &&
+        r.target.access.list.level === "public",
     )
   );
 }
@@ -70,6 +76,12 @@ function usesRoles(entity: EntityIR, ir: ProjectIR): boolean {
         d.kind === "one-to-many" &&
         !d.source.isSystem &&
         (d.source.access.list.level === "roles" || d.source.access.create.level === "roles"),
+    ) ||
+    entity.relations.some(
+      (r) =>
+        r.kind === "many-to-many" &&
+        !r.target.isSystem &&
+        r.target.access.list.level === "roles",
     )
   );
 }
@@ -208,6 +220,23 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
       );
     }
   }
+
+  const manyToManyRelations = entity.relations.filter(
+    (relation) => relation.kind === "many-to-many" && !relation.target.isSystem,
+  );
+
+  for (const relation of manyToManyRelations) {
+    const target = relation.target;
+    registry.add(sourceImport(path, entityFilePath(target)), `${target.name} as ${target.name}Entity`);
+    registry.add(
+      sourceImport(path, `${entity.moduleDir}/dto/attach-${toKebabCase(relation.name)}.dto.ts`),
+      `Attach${toPascalCase(relation.name)}Dto`,
+    );
+    registry.add(
+      "@nestjs/common",
+      target.primary.type === "int" ? "ParseIntPipe" : "ParseUUIDPipe",
+    );
+  }
   if (entity.multitenant) {
     registry.add(sourceImport(path, CURRENT_TENANT_PATH), "CurrentTenant");
     if (ir.project.settings.swagger) {
@@ -341,6 +370,61 @@ export function emitController(ir: ProjectIR, entity: EntityIR): GeneratedFile {
       `  ${createMethod}(@Param('id', ${idPipe}) id: ${idType}, @Body() dto: Create${child.name}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
     );
     lines.push(`    return this.service.${createMethod}(id, dto, ${tenantArg}user);`);
+    lines.push("  }");
+  }
+
+  for (const relation of manyToManyRelations) {
+    const target = relation.target;
+    const subPath = toKebabCase(relation.name);
+    const findMethod = `find${toPascalCase(relation.name)}`;
+    const attachMethod = `attach${toPascalCase(relation.name)}`;
+    const singleName = pluralize.singular(relation.name);
+    const detachMethod = `detach${toPascalCase(singleName)}`;
+    const targetParamName = `${singleName}Id`;
+    const targetPipe = target.primary.type === "int" ? "ParseIntPipe" : "ParseUUIDPipe";
+    const targetIdType = target.primary.tsType;
+    const targetIdParamDecorator = `  @ApiParam({ name: '${targetParamName}', ${target.primary.type === "int" ? "type: Number" : "type: String"}, description: 'Unique ${target.name} identifier' })`;
+
+    lines.push("");
+    lines.push(`  @ApiOperation({ summary: "List ${relation.name} for ${entity.name}" })`);
+    lines.push(`  @ApiOkResponse({ description: "${relation.name} list for ${entity.name}", type: [${target.name}Entity] })`);
+    lines.push(`  @ApiNotFoundResponse({ description: "${entity.name} not found" })`);
+    lines.push(...accessDecoratorsForRule(target.access.list, ir).map((line) => `  ${line}`));
+    lines.push(idParamDecorator);
+    lines.push(`  @Get(':id/${subPath}')`);
+    lines.push(
+      `  ${findMethod}(@Param('id', ${idPipe}) id: ${idType}, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
+    );
+    lines.push(`    return this.service.${findMethod}(id, ${tenantArg}user);`);
+    lines.push("  }");
+
+    lines.push("");
+    lines.push(`  @ApiOperation({ summary: "Attach ${relation.name} to ${entity.name}" })`);
+    lines.push(`  @ApiCreatedResponse({ description: "${relation.name} attached to ${entity.name}", type: [${target.name}Entity] })`);
+    lines.push(`  @ApiNotFoundResponse({ description: "${entity.name} not found" })`);
+    lines.push(`  @ApiBadRequestResponse({ description: "Validation failed" })`);
+    lines.push(...accessDecoratorsForRule(entity.access.update, ir).map((line) => `  ${line}`));
+    lines.push(idParamDecorator);
+    lines.push(`  @Post(':id/${subPath}')`);
+    lines.push(
+      `  ${attachMethod}(@Param('id', ${idPipe}) id: ${idType}, @Body() dto: Attach${toPascalCase(relation.name)}Dto, ${tenantParam}@CurrentUser() user?: AuthUser) {`,
+    );
+    lines.push(`    return this.service.${attachMethod}(id, dto, ${tenantArg}user);`);
+    lines.push("  }");
+
+    lines.push("");
+    lines.push(`  @ApiOperation({ summary: "Detach ${target.name} from ${entity.name}" })`);
+    lines.push(`  @ApiNoContentResponse({ description: "${target.name} detached from ${entity.name}" })`);
+    lines.push(`  @ApiNotFoundResponse({ description: "${entity.name} not found" })`);
+    lines.push(...accessDecoratorsForRule(entity.access.update, ir).map((line) => `  ${line}`));
+    lines.push(idParamDecorator);
+    lines.push(targetIdParamDecorator);
+    lines.push(`  @Delete(':id/${subPath}/:${targetParamName}')`);
+    lines.push("  @HttpCode(204)");
+    lines.push(
+      `  async ${detachMethod}(@Param('id', ${idPipe}) id: ${idType}, @Param('${targetParamName}', ${targetPipe}) ${targetParamName}: ${targetIdType}, ${tenantParam}@CurrentUser() user?: AuthUser): Promise<void> {`,
+    );
+    lines.push(`    await this.service.${detachMethod}(id, ${targetParamName}, ${tenantArg}user);`);
     lines.push("  }");
   }
 

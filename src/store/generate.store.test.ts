@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerateResult } from "@/core/generate";
 import { buildFileTree } from "@/core/ir/tree";
 import { createProject } from "@/core/model/defaults";
-import { useGenerateStore } from "./generate.store";
+import { clearGeneration, loadGeneration, useGenerateStore } from "./generate.store";
 import { useProjectStore } from "./project.store";
 import { useUiStore } from "./ui.store";
 
@@ -230,5 +230,87 @@ describe("useGenerateStore", () => {
       modified: 1,
       unchanged: 1,
     });
+  });
+
+  it("persists generation history and restores it when reopening the project", async () => {
+    const project = useProjectStore.getState().project;
+    if (!project) throw new Error("Missing project");
+
+    // 1. Initial run (baseline at creation)
+    const initialResult = result();
+    vi.mocked(generateProject).mockResolvedValue(initialResult);
+    await useGenerateStore.getState().run();
+
+    // Verify persisted in localStorage
+    const savedInitial = loadGeneration(project.id);
+    expect(savedInitial).not.toBeNull();
+    expect(savedInitial?.result?.files).toHaveLength(2);
+    expect(savedInitial?.previousResult).toBeNull();
+
+    // 2. Second run (subsequent modification)
+    const updatedFiles = [
+      { path: "README.md", content: "# Blog\n", kind: "markdown" as const },
+      { path: "src/main.ts", content: "export const main = false;\n", kind: "typescript" as const },
+    ];
+    const secondResult: GenerateResult = {
+      files: updatedFiles,
+      tree: buildFileTree(updatedFiles, "blog-api"),
+      issues: [],
+      stats: {
+        fileCount: 2,
+        totalBytes: 40,
+        byKind: { typescript: 1, json: 0, config: 0, markdown: 1, env: 0, docker: 0 },
+      },
+      warnings: [],
+    };
+    vi.mocked(generateProject).mockResolvedValue(secondResult);
+    await useGenerateStore.getState().run();
+
+    const savedSecond = loadGeneration(project.id);
+    expect(savedSecond?.result?.files[1]?.content).toBe("export const main = false;\n");
+    expect(savedSecond?.previousResult?.files[1]?.content).toBe("export const main = true;\n");
+
+    // 3. Simulate closing and reopening the app: reset store in-memory state
+    useGenerateStore.getState().reset();
+    expect(useGenerateStore.getState().result).toBeNull();
+    expect(useGenerateStore.getState().previousResult).toBeNull();
+
+    // 4. Reopen project
+    const loaded = useGenerateStore.getState().loadForProject(project.id);
+    expect(loaded).toBe(true);
+
+    const reloadedState = useGenerateStore.getState();
+    expect(reloadedState.status).toBe("ready");
+    expect(reloadedState.result?.files[1]?.content).toBe("export const main = false;\n");
+    expect(reloadedState.previousResult?.files[1]?.content).toBe("export const main = true;\n");
+
+    // Diffs can still be computed after reopening!
+    const diff = reloadedState.getFileDiff("src/main.ts");
+    expect(diff?.status).toBe("modified");
+    expect(diff?.original).toBe("export const main = true;\n");
+    expect(diff?.modified).toBe("export const main = false;\n");
+  });
+
+  it("supports silent generation without showing toast notifications", async () => {
+    vi.mocked(generateProject).mockResolvedValue(result());
+    useUiStore.setState({ toasts: [] });
+
+    await useGenerateStore.getState().run({ silent: true });
+
+    expect(useGenerateStore.getState().status).toBe("ready");
+    expect(useUiStore.getState().toasts).toHaveLength(0);
+  });
+
+  it("clears persisted generation when clearGeneration is called", async () => {
+    const project = useProjectStore.getState().project;
+    if (!project) throw new Error("Missing project");
+
+    vi.mocked(generateProject).mockResolvedValue(result());
+    await useGenerateStore.getState().run();
+
+    expect(loadGeneration(project.id)).not.toBeNull();
+
+    clearGeneration(project.id);
+    expect(loadGeneration(project.id)).toBeNull();
   });
 });
