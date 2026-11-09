@@ -21,6 +21,7 @@ import type {
   QueueDef,
   QueuesConfig,
   WebSocketConfig,
+  SeedingConfig,
 } from "./schema";
 
 const randomId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 12);
@@ -161,6 +162,14 @@ export function defaultWebSockets(): WebSocketConfig {
     corsOrigin: "*",
     auth: true,
     broadcastCrud: true,
+  };
+}
+
+export function defaultSeeding(): SeedingConfig {
+  return {
+    enabled: true,
+    count: 3,
+    realistic: true,
   };
 }
 
@@ -332,6 +341,7 @@ export function createProject(
       graphql: defaultGraphQL(),
       queues: defaultQueues(),
       websockets: defaultWebSockets(),
+      seeding: defaultSeeding(),
     },
     createdAt: timestamp,
     updatedAt: timestamp,

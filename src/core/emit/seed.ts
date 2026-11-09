@@ -9,8 +9,14 @@ import {
   USER_ENTITY_PATH,
 } from "./helpers";
 import type { GeneratedFile } from "../ir/types";
-
-const SAMPLE_ROWS = 3;
+import {
+  sampleRealisticDate,
+  sampleRealisticDateTime,
+  sampleRealisticJson,
+  sampleRealisticNumeric,
+  sampleRealisticString,
+  type SeedDataOptions,
+} from "./seed-data";
 
 function lowerFirst(value: string): string {
   return value.charAt(0).toLowerCase() + value.slice(1);
@@ -22,44 +28,13 @@ function sampleId(entity: EntityIR, entityIndex: number, row: number): string {
   return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 }
 
-function sampleString(
-  field: FieldIR,
-  entity: EntityIR,
-  row: number,
-): string {
-  const maxLength = Math.min(
-    field.definition.validators?.maxLength ??
-      field.definition.column?.length ??
-      255,
-    field.definition.column?.length ?? 255,
-  );
-  const minLength = field.definition.validators?.minLength ?? 0;
-  const base =
-    field.name === "email"
-      ? `seed+${entity.singularKebab}-${row + 1}@example.com`
-      : field.unique
-        ? `${entity.name} ${row + 1}`
-        : `${entity.name} sample ${row + 1}`;
-  const padded = base.padEnd(minLength, "x");
-  return padded.slice(0, Math.max(minLength, maxLength));
-}
-
-function numericValue(field: FieldIR, row: number): number {
-  const min = field.definition.validators?.min ?? 0;
-  const max = field.definition.validators?.max;
-  const step = field.type === "int" ? 1 : 1.5;
-  let value = min + row * step;
-  if (field.type === "int") value = Math.ceil(value);
-  if (max !== undefined && value > max) value = max;
-  return value;
-}
-
 function fieldValue(
   field: FieldIR,
   entity: EntityIR,
   entityIndex: number,
   row: number,
   registry: ImportRegistry,
+  options: SeedDataOptions = { realistic: true },
 ): string {
   if (field.enum) {
     const enumDef = field.enum;
@@ -70,27 +45,25 @@ function fieldValue(
 
   switch (field.type) {
     case "string":
-      return JSON.stringify(sampleString(field, entity, row));
     case "text":
-      return JSON.stringify(sampleString(field, entity, row));
+      return JSON.stringify(sampleRealisticString(field, entity, row, options));
     case "int":
-      return String(numericValue(field, row));
     case "float":
-      return String(numericValue(field, row));
+      return String(sampleRealisticNumeric(field, row, options));
     case "decimal": {
       const scale = field.definition.column?.scale ?? 2;
-      return JSON.stringify(numericValue(field, row).toFixed(scale));
+      return JSON.stringify(sampleRealisticNumeric(field, row, options).toFixed(scale));
     }
     case "boolean":
       return row % 2 === 0 ? "true" : "false";
     case "date":
-      return JSON.stringify(`2024-01-0${row + 1}`);
+      return JSON.stringify(sampleRealisticDate(row));
     case "datetime":
-      return `new Date(${JSON.stringify(`2024-01-0${row + 1}T00:00:00.000Z`)})`;
+      return `new Date(${JSON.stringify(sampleRealisticDateTime(row))})`;
     case "uuid":
       return JSON.stringify(sampleId(entity, entityIndex, row));
     case "json":
-      return JSON.stringify({ seed: row + 1 });
+      return JSON.stringify(sampleRealisticJson(field, row, options));
     default:
       return JSON.stringify("sample");
   }
@@ -136,19 +109,21 @@ function rowLines(
   entityIndex: number,
   orderIndex: Map<string, number>,
   registry: ImportRegistry,
+  sampleRows: number,
+  options: SeedDataOptions,
 ): string[] {
   const lines: string[] = [];
   const primary = entity.primary.name;
   const variable = `${lowerFirst(entity.name)}Rows`;
 
   lines.push(`  const ${variable}: Array<Record<string, unknown>> = [`);
-  for (let row = 0; row < SAMPLE_ROWS; row += 1) {
+  for (let row = 0; row < sampleRows; row += 1) {
     lines.push("    {");
     lines.push(`      ${primary}: ${JSON.stringify(sampleId(entity, entityIndex, row))},`);
     for (const field of entity.fields) {
       if (field.primary) continue;
       lines.push(
-        `      ${field.name}: ${fieldValue(field, entity, entityIndex, row, registry)},`,
+        `      ${field.name}: ${fieldValue(field, entity, entityIndex, row, registry, options)},`,
       );
     }
     for (const relation of entity.relations) {
@@ -160,7 +135,7 @@ function rowLines(
       const targetIndex = orderIndex.get(relation.target.id);
       if (targetIndex === undefined || targetIndex >= entityIndex) continue;
       lines.push(
-        `      ${relation.fkName}: ${JSON.stringify(sampleId(relation.target, targetIndex, row % SAMPLE_ROWS))},`,
+        `      ${relation.fkName}: ${JSON.stringify(sampleId(relation.target, targetIndex, row % sampleRows))},`,
       );
     }
     lines.push("    },");
@@ -175,6 +150,7 @@ function rowLines(
 function manyToManyLines(
   entities: EntityIR[],
   orderIndex: Map<string, number>,
+  sampleRows: number,
 ): string[] {
   const lines: string[] = [];
   for (const entity of entities) {
@@ -195,7 +171,7 @@ function manyToManyLines(
       lines.push("    .insert()");
       lines.push(`    .into(${JSON.stringify(relation.joinTableName)})`);
       lines.push("    .values([");
-      for (let row = 0; row < SAMPLE_ROWS; row += 1) {
+      for (let row = 0; row < sampleRows; row += 1) {
         lines.push(
           `      { ${sourceColumn}: ${JSON.stringify(sampleId(entity, sourceIndex, row))}, ${targetColumn}: ${JSON.stringify(sampleId(relation.target, targetIndex, row))} },`,
         );
@@ -326,14 +302,21 @@ export function emitSeed(ir: ProjectIR): GeneratedFile {
   }
   lines.push("");
 
-  for (const entity of ordered) {
-    const index = orderIndex.get(entity.id) ?? 0;
-    lines.push(...rowLines(entity, index, orderIndex, registry));
-    lines.push("");
-  }
+  const seedingEnabled = ir.seeding?.enabled ?? true;
+  const sampleRows = ir.seeding?.count ?? 3;
+  const realistic = ir.seeding?.realistic ?? true;
+  const seedOptions: SeedDataOptions = { realistic };
 
-  lines.push(...manyToManyLines(ordered, orderIndex));
-  if (entities.length > 0) lines.push("");
+  if (seedingEnabled) {
+    for (const entity of ordered) {
+      const index = orderIndex.get(entity.id) ?? 0;
+      lines.push(...rowLines(entity, index, orderIndex, registry, sampleRows, seedOptions));
+      lines.push("");
+    }
+
+    lines.push(...manyToManyLines(ordered, orderIndex, sampleRows));
+    if (entities.length > 0) lines.push("");
+  }
   lines.push(`    console.log("Seed complete.");`);
   lines.push("  } finally {");
   lines.push("    await dataSource.destroy();");

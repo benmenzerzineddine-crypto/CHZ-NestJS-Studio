@@ -18,6 +18,7 @@ import type {
   GraphQLConfig,
   QueuesConfig,
   WebSocketConfig,
+  SeedingConfig,
   ThrottleOverride,
   CacheHint,
 } from "../model/schema";
@@ -33,6 +34,8 @@ export interface GraphQLIR extends GraphQLConfig {}
 export interface QueuesIR extends QueuesConfig {}
 
 export interface WebSocketsIR extends WebSocketConfig {}
+
+export interface SeedingIR extends SeedingConfig {}
 
 export interface CustomEndpointIR {
   definition: CustomEndpointDef;
@@ -160,6 +163,7 @@ export interface ProjectIR {
   graphql: GraphQLIR;
   queues: QueuesIR;
   websockets: WebSocketsIR;
+  seeding: SeedingIR;
   enums: EnumIR[];
   entities: EntityIR[];
   user?: EntityIR;

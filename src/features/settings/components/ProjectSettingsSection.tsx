@@ -147,6 +147,66 @@ export function ProjectSettingsSection({
           }
         />
       </CardSection>
+
+      <CardSection
+        title="Database Seeding"
+        description="Configure sample data generation for development and tests."
+      >
+        <ToggleRow
+          label="Enable sample seed data"
+          hint="Emit sample entity rows in src/database/seeds/seed.ts."
+          checked={project.settings.seeding?.enabled ?? true}
+          onCheckedChange={(checked) =>
+            onUpdate((draft) => {
+              if (!draft.settings.seeding) {
+                draft.settings.seeding = { enabled: true, count: 3, realistic: true };
+              }
+              draft.settings.seeding.enabled = checked;
+            })
+          }
+        />
+        {project.settings.seeding?.enabled !== false && (
+          <>
+            <ToggleRow
+              label="Realistic seed data"
+              hint="Generate contextual data based on entity and field semantics (names, titles, emails, addresses, prices)."
+              checked={project.settings.seeding?.realistic ?? true}
+              onCheckedChange={(checked) =>
+                onUpdate((draft) => {
+                  if (!draft.settings.seeding) {
+                    draft.settings.seeding = { enabled: true, count: 3, realistic: true };
+                  }
+                  draft.settings.seeding.realistic = checked;
+                })
+              }
+            />
+            <FormRow
+              label="Seed rows per entity"
+              hint="Number of records generated per entity (1 - 20)."
+              htmlFor="settings-seed-count"
+            >
+              <Input
+                id="settings-seed-count"
+                type="number"
+                min={1}
+                max={20}
+                value={project.settings.seeding?.count ?? 3}
+                onChange={(event) => {
+                  const val = parseInt(event.target.value, 10);
+                  if (!Number.isNaN(val)) {
+                    onUpdate((draft) => {
+                      if (!draft.settings.seeding) {
+                        draft.settings.seeding = { enabled: true, count: 3, realistic: true };
+                      }
+                      draft.settings.seeding.count = Math.max(1, Math.min(20, val));
+                    });
+                  }
+                }}
+              />
+            </FormRow>
+          </>
+        )}
+      </CardSection>
     </>
   );
 }

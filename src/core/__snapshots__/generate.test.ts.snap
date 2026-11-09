@@ -1457,32 +1457,35 @@ async function seed(): Promise<void> {
     const postRows: Array<Record<string, unknown>> = [
       {
         id: "00000000-0000-4000-8000-000000001001",
-        title: "Post sample 1",
-        slug: "Post 1",
-        content: "Post sample 1",
+        title: "Getting Started with Modern NestJS Architecture",
+        slug: "getting-started-with-modern-nestjs-architecture-1",
+        content:
+          "In modern backend engineering, structured domain modelling and decoupled modules ensure long-term codebase maintainability. This article explores best practices for building enterprise-grade APIs with NestJS.",
         status: PostStatus.Draft,
-        publishedAt: new Date("2024-01-01T00:00:00.000Z"),
-        views: 0,
+        publishedAt: new Date("2024-01-15T09:30:00.000Z"),
+        views: 142,
         authorId: adminId,
       },
       {
         id: "00000000-0000-4000-8000-000000001002",
-        title: "Post sample 2",
-        slug: "Post 2",
-        content: "Post sample 2",
+        title: "Optimizing High-Throughput Relational Databases",
+        slug: "optimizing-high-throughput-relational-databases-2",
+        content:
+          "Database indexing, connection pooling, and optimistic concurrency are critical techniques when scaling high-traffic transactional applications in production environments.",
         status: PostStatus.Published,
-        publishedAt: new Date("2024-01-02T00:00:00.000Z"),
-        views: 1,
+        publishedAt: new Date("2024-02-20T14:15:00.000Z"),
+        views: 385,
         authorId: adminId,
       },
       {
         id: "00000000-0000-4000-8000-000000001003",
-        title: "Post sample 3",
-        slug: "Post 3",
-        content: "Post sample 3",
+        title: "Designing Resilient Cloud Microservices with Zero-Trust Security",
+        slug: "designing-resilient-cloud-microservices-3",
+        content:
+          "Adopting zero-trust authorization architectures, signed session tokens, and strict input validation guards distributed systems against common production vulnerabilities.",
         status: PostStatus.Archived,
-        publishedAt: new Date("2024-01-03T00:00:00.000Z"),
-        views: 2,
+        publishedAt: new Date("2024-03-25T16:45:00.000Z"),
+        views: 890,
         authorId: adminId,
       },
     ];
@@ -1491,15 +1494,15 @@ async function seed(): Promise<void> {
     const tagRows: Array<Record<string, unknown>> = [
       {
         id: "00000000-0000-4000-8000-000000001011",
-        name: "Tag 1",
+        name: "Engineering-1",
       },
       {
         id: "00000000-0000-4000-8000-000000001012",
-        name: "Tag 2",
+        name: "Architecture-2",
       },
       {
         id: "00000000-0000-4000-8000-000000001013",
-        name: "Tag 3",
+        name: "Security-3",
       },
     ];
     await dataSource.getRepository(Tag).upsert(tagRows as QueryDeepPartialEntity<Tag>[], ["id"]);
@@ -1507,19 +1510,19 @@ async function seed(): Promise<void> {
     const commentRows: Array<Record<string, unknown>> = [
       {
         id: "00000000-0000-4000-8000-000000001021",
-        body: "Comment sample 1",
+        body: "Great breakdown! The architectural insights on module boundaries were especially helpful.",
         isApproved: true,
         postId: "00000000-0000-4000-8000-000000001001",
       },
       {
         id: "00000000-0000-4000-8000-000000001022",
-        body: "Comment sample 2",
+        body: "Clear and thorough guide. We applied these connection pooling settings and observed immediate latency drops.",
         isApproved: false,
         postId: "00000000-0000-4000-8000-000000001002",
       },
       {
         id: "00000000-0000-4000-8000-000000001023",
-        body: "Comment sample 3",
+        body: "Excellent overview of security trade-offs. Looking forward to the next deep dive!",
         isApproved: true,
         postId: "00000000-0000-4000-8000-000000001003",
       },
@@ -5986,32 +5989,35 @@ async function seed(): Promise<void> {
     const postRows: Array<Record<string, unknown>> = [
       {
         id: "00000000-0000-4000-8000-000000001001",
-        title: "Post sample 1",
-        slug: "Post 1",
-        content: "Post sample 1",
+        title: "Getting Started with Modern NestJS Architecture",
+        slug: "getting-started-with-modern-nestjs-architecture-1",
+        content:
+          "In modern backend engineering, structured domain modelling and decoupled modules ensure long-term codebase maintainability. This article explores best practices for building enterprise-grade APIs with NestJS.",
         status: PostStatus.Draft,
-        publishedAt: new Date("2024-01-01T00:00:00.000Z"),
-        views: 0,
+        publishedAt: new Date("2024-01-15T09:30:00.000Z"),
+        views: 142,
         authorId: adminId,
       },
       {
         id: "00000000-0000-4000-8000-000000001002",
-        title: "Post sample 2",
-        slug: "Post 2",
-        content: "Post sample 2",
+        title: "Optimizing High-Throughput Relational Databases",
+        slug: "optimizing-high-throughput-relational-databases-2",
+        content:
+          "Database indexing, connection pooling, and optimistic concurrency are critical techniques when scaling high-traffic transactional applications in production environments.",
         status: PostStatus.Published,
-        publishedAt: new Date("2024-01-02T00:00:00.000Z"),
-        views: 1,
+        publishedAt: new Date("2024-02-20T14:15:00.000Z"),
+        views: 385,
         authorId: adminId,
       },
       {
         id: "00000000-0000-4000-8000-000000001003",
-        title: "Post sample 3",
-        slug: "Post 3",
-        content: "Post sample 3",
+        title: "Designing Resilient Cloud Microservices with Zero-Trust Security",
+        slug: "designing-resilient-cloud-microservices-3",
+        content:
+          "Adopting zero-trust authorization architectures, signed session tokens, and strict input validation guards distributed systems against common production vulnerabilities.",
         status: PostStatus.Archived,
-        publishedAt: new Date("2024-01-03T00:00:00.000Z"),
-        views: 2,
+        publishedAt: new Date("2024-03-25T16:45:00.000Z"),
+        views: 890,
         authorId: adminId,
       },
     ];
@@ -6020,15 +6026,15 @@ async function seed(): Promise<void> {
     const tagRows: Array<Record<string, unknown>> = [
       {
         id: "00000000-0000-4000-8000-000000001011",
-        name: "Tag 1",
+        name: "Engineering-1",
       },
       {
         id: "00000000-0000-4000-8000-000000001012",
-        name: "Tag 2",
+        name: "Architecture-2",
       },
       {
         id: "00000000-0000-4000-8000-000000001013",
-        name: "Tag 3",
+        name: "Security-3",
       },
     ];
     await dataSource.getRepository(Tag).upsert(tagRows as QueryDeepPartialEntity<Tag>[], ["id"]);
@@ -6036,19 +6042,19 @@ async function seed(): Promise<void> {
     const commentRows: Array<Record<string, unknown>> = [
       {
         id: "00000000-0000-4000-8000-000000001021",
-        body: "Comment sample 1",
+        body: "Great breakdown! The architectural insights on module boundaries were especially helpful.",
         isApproved: true,
         postId: "00000000-0000-4000-8000-000000001001",
       },
       {
         id: "00000000-0000-4000-8000-000000001022",
-        body: "Comment sample 2",
+        body: "Clear and thorough guide. We applied these connection pooling settings and observed immediate latency drops.",
         isApproved: false,
         postId: "00000000-0000-4000-8000-000000001002",
       },
       {
         id: "00000000-0000-4000-8000-000000001023",
-        body: "Comment sample 3",
+        body: "Excellent overview of security trade-offs. Looking forward to the next deep dive!",
         isApproved: true,
         postId: "00000000-0000-4000-8000-000000001003",
       },

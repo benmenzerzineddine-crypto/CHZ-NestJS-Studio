@@ -71,6 +71,11 @@ describe("createProject", () => {
         auth: true,
         broadcastCrud: true,
       },
+      seeding: {
+        enabled: true,
+        count: 3,
+        realistic: true,
+      },
     });
   });
 

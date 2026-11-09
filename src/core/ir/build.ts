@@ -1,4 +1,4 @@
-import { USER_ENTITY_ID, defaultGraphQL, defaultMultitenancy, defaultQueues, defaultThrottling, defaultUploads, defaultWebSockets } from "../model/defaults";
+import { USER_ENTITY_ID, defaultGraphQL, defaultMultitenancy, defaultQueues, defaultSeeding, defaultThrottling, defaultUploads, defaultWebSockets } from "../model/defaults";
 import { buildDerivedInverses } from "../model/normalize";
 import type { CustomEndpointDef, EntityDef, FieldDef, Project, RelationDef } from "../model/schema";
 import { toPascalCase } from "../model/naming";
@@ -328,6 +328,7 @@ export function buildIR(project: Project): ProjectIR {
     graphql: project.settings.graphql ?? defaultGraphQL(),
     queues: project.settings.queues ?? defaultQueues(),
     websockets: project.settings.websockets ?? defaultWebSockets(),
+    seeding: project.settings.seeding ?? defaultSeeding(),
     enums,
     entities,
     user: entityById.get(USER_ENTITY_ID),

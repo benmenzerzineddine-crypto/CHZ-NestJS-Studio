@@ -92,3 +92,91 @@ describe("seed relation ordering", () => {
     expect(content).not.toContain('secondId: "00000000-0000-4000-8000-000000001011"');
   });
 });
+
+describe("database seeding options and realistic generation", () => {
+  it("generates realistic titles, slugs, and bodies by default", () => {
+    const content = seedFor();
+    expect(content).toContain("Getting Started with Modern NestJS Architecture");
+    expect(content).toContain("getting-started-with-modern-nestjs-architecture-1");
+    expect(content).toContain("In modern backend engineering");
+    expect(content).toContain("Great breakdown! The architectural insights");
+  });
+
+  it("supports fallback to non-realistic data when realistic is false", () => {
+    const project = {
+      ...blog,
+      settings: {
+        ...blog.settings,
+        seeding: {
+          enabled: true,
+          count: 3,
+          realistic: false,
+        },
+      },
+    };
+    const content = seedFor(project);
+    expect(content).toContain('"Post sample 1"');
+    expect(content).toContain('"Post 1"');
+    expect(content).toContain('"Comment sample 1"');
+  });
+
+  it("configures custom row count per entity", () => {
+    const project = {
+      ...blog,
+      settings: {
+        ...blog.settings,
+        seeding: {
+          enabled: true,
+          count: 5,
+          realistic: true,
+        },
+      },
+    };
+    const content = seedFor(project);
+    expect(content).toContain("00000000-0000-4000-8000-000000001005");
+    expect(content).toContain("Automated Continuous Delivery Pipelines for Node.js");
+  });
+
+  it("omits entity rows when seeding is disabled", () => {
+    const project = {
+      ...blog,
+      settings: {
+        ...blog.settings,
+        seeding: {
+          enabled: false,
+          count: 3,
+          realistic: true,
+        },
+      },
+    };
+    const content = seedFor(project);
+    expect(content).toContain("SEED_ADMIN");
+    expect(content).not.toContain("const postRows");
+    expect(content).not.toContain("const tagRows");
+    expect(content).not.toContain("const commentRows");
+    expect(content).toContain('console.log("Seed complete.");');
+  });
+
+  it("generates realistic e-commerce, contact, and pricing fields", () => {
+    const project = createProject("Shop API");
+    const product = createEntity("Product");
+    product.fields.push(
+      createField("title", "string"),
+      createField("sku", "string"),
+      createField("price", "decimal"),
+      createField("stock", "int"),
+      createField("contactEmail", "string"),
+      createField("meta", "json"),
+    );
+    project.entities.push(product);
+
+    const content = seedFor(project);
+    expect(content).toContain("Wireless Noise-Canceling Studio Headphones");
+    expect(content).toContain("SKU-PROD-1001");
+    expect(content).toContain('"49.99"');
+    expect(content).toContain("stock: 45");
+    expect(content).toContain("alex.morgan@example.com");
+    expect(content).toContain('"env":"production"');
+  });
+});
+

@@ -384,6 +384,13 @@ export const websocketConfigSchema = z.strictObject({
 });
 export type WebSocketConfig = z.infer<typeof websocketConfigSchema>;
 
+export const seedingConfigSchema = z.strictObject({
+  enabled: z.boolean().default(true),
+  count: z.number().int().min(1).max(20).default(3),
+  realistic: z.boolean().default(true),
+});
+export type SeedingConfig = z.infer<typeof seedingConfigSchema>;
+
 export const projectSettingsSchema = z.strictObject({
   packageManager: z.literal("npm"),
   apiPrefix: z.string().min(1).max(40).regex(/^[a-z][a-z0-9-]*$/, "Use lowercase letters, digits or dashes"),
@@ -422,6 +429,11 @@ export const projectSettingsSchema = z.strictObject({
     corsOrigin: "*",
     auth: true,
     broadcastCrud: true,
+  }),
+  seeding: seedingConfigSchema.default({
+    enabled: true,
+    count: 3,
+    realistic: true,
   }),
 });
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
