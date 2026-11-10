@@ -254,6 +254,7 @@ DB_DATABASE=${ir.packageName.replace(/-/g, "_")}`;
   const content = `# Copy to .env and replace every default secret before deploying.
 NODE_ENV=development
 PORT=3000
+CORS_ORIGIN=*
 
 ${db}
 

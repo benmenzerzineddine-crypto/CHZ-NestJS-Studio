@@ -172,6 +172,7 @@ export function emitExceptionFilter(_ir: ProjectIR): GeneratedFile {
   Logger,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { EntityNotFoundError, QueryFailedError } from "typeorm";
 
 interface ErrorBody {
   message?: string | string[];
@@ -186,7 +187,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
     const request = context.getRequest<Request>();
-    const status =
+    let status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let message: string | string[] = "Internal server error";
@@ -201,6 +202,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = parsed.message ?? exception.message;
         error = parsed.error ?? exception.name;
       }
+    } else if (exception instanceof QueryFailedError) {
+      const dbError = exception as unknown as { code?: string; errno?: number; message?: string };
+      const isUniqueViolation =
+        dbError.code === "23505" ||
+        dbError.code === "ER_DUP_ENTRY" ||
+        dbError.errno === 1062 ||
+        (typeof dbError.message === "string" && dbError.message.includes("UNIQUE constraint failed"));
+
+      if (isUniqueViolation) {
+        status = HttpStatus.CONFLICT;
+        message = "Unique constraint violation or duplicate record";
+        error = "Conflict";
+      } else {
+        this.logger.error(exception.stack ?? exception.message);
+      }
+    } else if (exception instanceof EntityNotFoundError) {
+      status = HttpStatus.NOT_FOUND;
+      message = exception.message || "Record not found";
+      error = "Not Found";
     } else {
       this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     }

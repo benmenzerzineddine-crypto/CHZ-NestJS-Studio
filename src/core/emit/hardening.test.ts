@@ -4,8 +4,11 @@ import { buildIR } from "../ir/build";
 import { createEntity, createField, createProject, createRelation } from "../model/defaults";
 import { projectSchema } from "../model/schema";
 import { emitAuth } from "./auth";
+import { emitCommon } from "./common";
+import { emitMain } from "./config";
 import { emitCreateDto, emitQueryDto } from "./dto";
 import { emitEntity } from "./entity";
+import { emitHealth } from "./health";
 import { emitService } from "./service";
 import { emitTests } from "./tests";
 import { emitUsers } from "./users";
@@ -82,4 +85,34 @@ describe("generated hardening", () => {
     expect(spec.content).toContain("sampleString(`${\"Post\"} ${suffix}`, 5, 40)");
     expect(spec.content).toContain("score: 10,");
   });
+
+  it("enables CORS in main.ts bootstrap for browser clients", () => {
+    const ir = buildIR(blog);
+    const main = emitMain(ir);
+    expect(main.content).toContain("app.enableCors();");
+  });
+
+  it("maps TypeORM QueryFailedError and EntityNotFoundError in AllExceptionsFilter", () => {
+    const ir = buildIR(blog);
+    const filter = emitCommon(ir).find((file) => file.path.endsWith("all-exceptions.filter.ts"));
+    if (!filter) throw new Error("Missing AllExceptionsFilter");
+
+    expect(filter.content).toContain('import { EntityNotFoundError, QueryFailedError } from "typeorm";');
+    expect(filter.content).toContain("exception instanceof QueryFailedError");
+    expect(filter.content).toContain("isUniqueViolation");
+    expect(filter.content).toContain("status = HttpStatus.CONFLICT;");
+    expect(filter.content).toContain("exception instanceof EntityNotFoundError");
+    expect(filter.content).toContain("status = HttpStatus.NOT_FOUND;");
+  });
+
+  it("emits root, liveness, and readiness probes in HealthController", () => {
+    const ir = buildIR(blog);
+    const health = emitHealth(ir);
+    expect(health.content).toContain("@Get()");
+    expect(health.content).toContain("@Get('live')");
+    expect(health.content).toContain("@Get('ready')");
+    expect(health.content).toContain("@ApiOperation({ summary: \"Liveness probe\" })");
+    expect(health.content).toContain("@ApiOperation({ summary: \"Readiness probe\" })");
+  });
 });
+

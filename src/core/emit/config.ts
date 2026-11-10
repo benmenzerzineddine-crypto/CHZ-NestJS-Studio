@@ -190,6 +190,7 @@ export function emitMain(ir: ProjectIR): GeneratedFile {
   const content = `${registry.render()}${authGuard}async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix(${JSON.stringify(ir.apiPrefix)});
+  app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

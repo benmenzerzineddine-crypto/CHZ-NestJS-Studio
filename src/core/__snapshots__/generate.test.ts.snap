@@ -75,13 +75,29 @@ export class AppModule {}
   },
   {
     "content": "import { Controller, Get } from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
+import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 
 @ApiTags("health")
 @Controller("health")
 export class HealthController {
+  @ApiOperation({ summary: "Service health status" })
+  @ApiOkResponse({ description: "Service is healthy" })
   @Get()
   health(): { status: string } {
+    return { status: "ok" };
+  }
+
+  @ApiOperation({ summary: "Liveness probe" })
+  @ApiOkResponse({ description: "Service process is alive" })
+  @Get("live")
+  live(): { status: string } {
+    return { status: "ok" };
+  }
+
+  @ApiOperation({ summary: "Readiness probe" })
+  @ApiOkResponse({ description: "Service is ready to accept traffic" })
+  @Get("ready")
+  ready(): { status: string } {
     return { status: "ok" };
   }
 }
@@ -99,6 +115,7 @@ import { NestFactory } from "@nestjs/core";
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix("api");
+  app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -159,6 +176,7 @@ docker-compose.yml
     "content": "# Copy to .env and replace every default secret before deploying.
 NODE_ENV=development
 PORT=3000
+CORS_ORIGIN=*
 
 DB_TYPE=postgres
 DB_HOST=localhost
@@ -1158,6 +1176,7 @@ export function parseDuration(value: string): number {
   Logger,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { EntityNotFoundError, QueryFailedError } from "typeorm";
 
 interface ErrorBody {
   message?: string | string[];
@@ -1172,7 +1191,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
     const request = context.getRequest<Request>();
-    const status =
+    let status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let message: string | string[] = "Internal server error";
@@ -1187,6 +1206,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = parsed.message ?? exception.message;
         error = parsed.error ?? exception.name;
       }
+    } else if (exception instanceof QueryFailedError) {
+      const dbError = exception as unknown as { code?: string; errno?: number; message?: string };
+      const isUniqueViolation =
+        dbError.code === "23505" ||
+        dbError.code === "ER_DUP_ENTRY" ||
+        dbError.errno === 1062 ||
+        (typeof dbError.message === "string" &&
+          dbError.message.includes("UNIQUE constraint failed"));
+
+      if (isUniqueViolation) {
+        status = HttpStatus.CONFLICT;
+        message = "Unique constraint violation or duplicate record";
+        error = "Conflict";
+      } else {
+        this.logger.error(exception.stack ?? exception.message);
+      }
+    } else if (exception instanceof EntityNotFoundError) {
+      status = HttpStatus.NOT_FOUND;
+      message = exception.message || "Record not found";
+      error = "Not Found";
     } else {
       this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     }
@@ -1568,14 +1607,32 @@ seed().catch((error: unknown) => {
   {
     "content": "import { Public } from "../auth/decorators/public.decorator";
 import { Controller, Get } from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
+import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 
 @ApiTags("health")
 @Controller("health")
 export class HealthController {
   @Public()
+  @ApiOperation({ summary: "Service health status" })
+  @ApiOkResponse({ description: "Service is healthy" })
   @Get()
   health(): { status: string } {
+    return { status: "ok" };
+  }
+
+  @Public()
+  @ApiOperation({ summary: "Liveness probe" })
+  @ApiOkResponse({ description: "Service process is alive" })
+  @Get("live")
+  live(): { status: string } {
+    return { status: "ok" };
+  }
+
+  @Public()
+  @ApiOperation({ summary: "Readiness probe" })
+  @ApiOkResponse({ description: "Service is ready to accept traffic" })
+  @Get("ready")
+  ready(): { status: string } {
     return { status: "ok" };
   }
 }
@@ -1606,6 +1663,7 @@ if (process.env.NODE_ENV === "production") {
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix("api");
+  app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -4715,6 +4773,7 @@ docker-compose.yml
     "content": "# Copy to .env and replace every default secret before deploying.
 NODE_ENV=development
 PORT=3000
+CORS_ORIGIN=*
 
 DB_TYPE=sqlite
 DB_DATABASE=./app.sqlite
@@ -5690,6 +5749,7 @@ export function parseDuration(value: string): number {
   Logger,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { EntityNotFoundError, QueryFailedError } from "typeorm";
 
 interface ErrorBody {
   message?: string | string[];
@@ -5704,7 +5764,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
     const request = context.getRequest<Request>();
-    const status =
+    let status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let message: string | string[] = "Internal server error";
@@ -5719,6 +5779,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = parsed.message ?? exception.message;
         error = parsed.error ?? exception.name;
       }
+    } else if (exception instanceof QueryFailedError) {
+      const dbError = exception as unknown as { code?: string; errno?: number; message?: string };
+      const isUniqueViolation =
+        dbError.code === "23505" ||
+        dbError.code === "ER_DUP_ENTRY" ||
+        dbError.errno === 1062 ||
+        (typeof dbError.message === "string" &&
+          dbError.message.includes("UNIQUE constraint failed"));
+
+      if (isUniqueViolation) {
+        status = HttpStatus.CONFLICT;
+        message = "Unique constraint violation or duplicate record";
+        error = "Conflict";
+      } else {
+        this.logger.error(exception.stack ?? exception.message);
+      }
+    } else if (exception instanceof EntityNotFoundError) {
+      status = HttpStatus.NOT_FOUND;
+      message = exception.message || "Record not found";
+      error = "Not Found";
     } else {
       this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     }
@@ -6100,14 +6180,32 @@ seed().catch((error: unknown) => {
   {
     "content": "import { Public } from "../auth/decorators/public.decorator";
 import { Controller, Get } from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
+import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 
 @ApiTags("health")
 @Controller("health")
 export class HealthController {
   @Public()
+  @ApiOperation({ summary: "Service health status" })
+  @ApiOkResponse({ description: "Service is healthy" })
   @Get()
   health(): { status: string } {
+    return { status: "ok" };
+  }
+
+  @Public()
+  @ApiOperation({ summary: "Liveness probe" })
+  @ApiOkResponse({ description: "Service process is alive" })
+  @Get("live")
+  live(): { status: string } {
+    return { status: "ok" };
+  }
+
+  @Public()
+  @ApiOperation({ summary: "Readiness probe" })
+  @ApiOkResponse({ description: "Service is ready to accept traffic" })
+  @Get("ready")
+  ready(): { status: string } {
     return { status: "ok" };
   }
 }
@@ -6138,6 +6236,7 @@ if (process.env.NODE_ENV === "production") {
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix("api");
+  app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
